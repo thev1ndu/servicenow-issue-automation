@@ -1,0 +1,261 @@
+name: Issue → ServiceNow
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: sn-pipeline-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      should_run: ${{ steps.c.outputs.should_run }}
+      issue_number: ${{ steps.c.outputs.issue_number }}
+      label_name: ${{ steps.c.outputs.label_name }}
+    steps:
+      - id: c
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const labelName = context.payload.label?.name ?? '';
+            const action = context.payload.action || context.eventName;
+
+            const markers = ['SR Generic', 'SR Request Logs', 'SR Standard Generic', 'SR Information'];
+            const hasMarker = markers.some(m => (issue.body || '').includes(m));
+
+            // Run on:
+            // - labeled: only when SR labels are added
+            // - opened/edited: only when this looks like an SR template issue
+            const isSrLabel = labelName.startsWith('SRType/') || labelName.startsWith('CatalogueItem/');
+            const shouldConsider =
+              (action === 'labeled' && isSrLabel) ||
+              ((action === 'opened' || action === 'edited') && (hasMarker || (issue.title || '').startsWith('[SR-Change]:')));
+
+            if (!shouldConsider) {
+              core.setOutput('should_run', 'false');
+              core.setOutput('issue_number', String(issue.number));
+              core.setOutput('label_name', labelName);
+              return;
+            }
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number
+            });
+            const caseDone = comments.some(c => c.user.type === 'Bot' && c.body.includes('ServiceNow Case Created Successfully'));
+            core.setOutput('should_run', caseDone ? 'false' : 'true');
+            core.setOutput('issue_number', String(issue.number));
+            core.setOutput('label_name', labelName);
+
+  validate:
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    outputs:
+      validation_passed: ${{ steps.v.outputs.validation_passed }}
+      sr_type: ${{ steps.v.outputs.sr_type }}
+      case_type: ${{ steps.v.outputs.case_type }}
+      catalog_item: ${{ steps.v.outputs.catalog_item }}
+      catalog_prefix: ${{ steps.v.outputs.catalog_prefix }}
+      failure_reason: ${{ steps.v.outputs.failure_reason }}
+    steps:
+      - id: v
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue?.number ?? parseInt('${{ needs.gate.outputs.issue_number }}', 10);
+            const labelName = context.payload.label?.name ?? '${{ needs.gate.outputs.label_name }}';
+            const eventAction = context.payload.action || '';
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber
+            });
+            const issueTitle = issue.title || '';
+            const issueBody = issue.body || '';
+            let labels = issue.labels.map(l => l.name);
+            let srTypeLabel = labels.find(l => l.startsWith('SRType/'));
+            let catalogLabel = labels.find(l => l.startsWith('CatalogueItem/'));
+            const { data: commentsEarly } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber
+            });
+            const caseCreated = commentsEarly.some(c => c.user.type === 'Bot' && c.body.includes('ServiceNow Case Created Successfully'));
+            function sectionAfterHeader(body, header) {
+              const esc = header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const re = new RegExp(`###\\s+${esc}\\s*\\n+([^\\n][\\s\\S]*?)(?=\\n+###|\\n*$)`, 'i');
+              const m = body.match(re);
+              return m ? m[1].trim() : '';
+            }
+            if (issue.labels.some(l => l.name === 'validation-passed') && !caseCreated && srTypeLabel && catalogLabel) {
+              core.setOutput('validation_passed', 'true');
+              core.setOutput('sr_type', srTypeLabel.replace('SRType/', ''));
+              core.setOutput('case_type', 'Service Request');
+              core.setOutput('catalog_item', catalogLabel.replace('CatalogueItem/', ''));
+              core.setOutput('catalog_prefix', catalogLabel);
+              core.setOutput('failure_reason', '');
+              return;
+            }
+            const validMarkers = ['SR Generic', 'SR Request Logs', 'SR Standard Generic', 'SR Information'];
+            const hasValidMarker = validMarkers.some(m => issueBody.includes(m));
+            async function failValidation(message, reason) {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber
+              });
+              for (const c of comments) {
+                if (c.user.type === 'Bot' && c.body.includes('Template Validation')) {
+                  await github.rest.issues.deleteComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: c.id });
+                }
+              }
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, body: message });
+              for (const lbl of labels.filter(l => l.startsWith('SRType/') || l.startsWith('CatalogueItem/'))) {
+                try { await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, name: lbl }); } catch (_) {}
+              }
+              core.setOutput('validation_passed', 'false');
+              core.setOutput('failure_reason', reason);
+              core.setFailed('Validation: ' + reason);
+            }
+            if (!hasValidMarker) {
+              if (srTypeLabel || catalogLabel) {
+                const { data: existing } = await github.rest.issues.listComments({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber
+                });
+                const warned = existing.some(c => c.user.type === 'Bot' && c.body.includes('Invalid Template for Service Request Labels'));
+                if (!warned) {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
+                    body: `## ❌ Template Validation Failed\n\n**Invalid Template for Service Request Labels.**\n\nRemove SR labels or use an official SR template.`
+                  });
+                  for (const lbl of [srTypeLabel, catalogLabel].filter(Boolean)) {
+                    try { await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, name: lbl }); } catch (_) {}
+                  }
+                }
+              }
+              core.setOutput('validation_passed', 'false');
+              core.setOutput('failure_reason', 'Not an SR template');
+              return;
+            }
+
+            // If the issue was just opened/edited, allow up to 5 minutes for users to add both labels.
+            // This avoids spamming a "missing labels" failure immediately on issue creation.
+            if ((eventAction === 'opened' || eventAction === 'edited') && (!srTypeLabel || !catalogLabel)) {
+              const maxPolls = 10; // 10 × 30s = 5 minutes
+              const delay = ms => new Promise(r => setTimeout(r, ms));
+              for (let i = 0; i < maxPolls; i++) {
+                await delay(30_000);
+                const { data: refreshed } = await github.rest.issues.get({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber
+                });
+                labels = refreshed.labels.map(l => l.name);
+                srTypeLabel = labels.find(l => l.startsWith('SRType/'));
+                catalogLabel = labels.find(l => l.startsWith('CatalogueItem/'));
+                if (srTypeLabel && catalogLabel) break;
+              }
+            }
+
+            if (!srTypeLabel || !catalogLabel) {
+              let msg = !srTypeLabel && !catalogLabel
+                ? `## ⏳ Waiting for labels\n\nAdd both required labels within 5 minutes:\n- \`SRType/\`\n- \`CatalogueItem/\`\n\nOnce both are added, validation will pass and the ServiceNow case will be created automatically.`
+                : !srTypeLabel ? `## ⏳ Waiting for SRType label\n\nYou added: **${catalogLabel}**\n\nAdd an \`SRType/\` label within 5 minutes (e.g. \`SRType/Normal Change\`).`
+                : `## ⏳ Waiting for CatalogueItem label\n\nYou added: **${srTypeLabel}**\n\nAdd a \`CatalogueItem/\` label within 5 minutes (e.g. \`CatalogueItem/Generic Requests\`).`;
+              const { data: ex } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber });
+              const dup = ex.some(c => c.user.type === 'Bot' && c.body.includes('Waiting for') && c.body.includes('label'));
+              if (!dup) await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, body: msg });
+              core.setOutput('validation_passed', 'false');
+              core.setOutput('failure_reason', 'Missing required labels');
+              return;
+            }
+            const { data: allComments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber });
+            for (const c of allComments) {
+              if (c.user.type === 'Bot' && c.body.includes('Template Validation Failed') && (c.body.includes('Missing Required') || c.body.includes('Missing SRType') || c.body.includes('Missing CatalogueItem'))) {
+                await github.rest.issues.deleteComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: c.id });
+              }
+            }
+            if (!issueTitle.startsWith('[SR-Change]:')) {
+              await failValidation(`## ❌ Template Validation Failed\n\nTitle must start with \`[SR-Change]:\`.`, 'Title format invalid');
+              return;
+            }
+            const rulesets = {
+              'CatalogueItem/Generic Requests': { requiredFields: ['Short Description','Description','Priority','Impact','Impact Description (Overall)','Impact Description (Customer)','Environment Details','Affected Component','Affected Services','Service Outage/Downtime','Is a maintenance window required or not','Implementation Plan','Test Plan','Monitoring Checks'] },
+              'CatalogueItem/Request Logs': { requiredFields: ['Short Description','Description','Priority','Impact','Impact Description','Customer Project','Environment Details'], allowedValues: { Priority: ['Critical'] } },
+              'CatalogueItem/Standard Generic': { requiredFields: ['Short Description','Description','Priority','Impact','Environment Details'] },
+              'CatalogueItem/Information': { requiredFields: ['Request Description','Impact','Customer Project'] }
+            };
+            const rules = rulesets[catalogLabel];
+            if (!rules) {
+              await failValidation(`## ❌ Template Validation Failed\n\nUnknown catalog: **${catalogLabel}**`, 'Unknown catalog type');
+              return;
+            }
+            const bodyLower = issueBody.toLowerCase();
+            const missing = rules.requiredFields.filter(f => !bodyLower.includes(f.toLowerCase()));
+            if (missing.length) {
+              await failValidation(`## ❌ Template Validation Failed\n\n**Missing fields for ${catalogLabel}:**\n` + missing.map(f => `- ${f}`).join('\n'), 'Missing: ' + missing.join(', '));
+              return;
+            }
+            if (rules.allowedValues && rules.allowedValues.Priority) {
+              const priRaw = sectionAfterHeader(issueBody, 'Priority');
+              const allowed = rules.allowedValues.Priority;
+              const okPri = allowed.some(a => priRaw.toLowerCase().includes(a.toLowerCase()));
+              if (!okPri) {
+                await failValidation(
+                  `## ❌ Template Validation Failed\n\n**Invalid Priority for ${catalogLabel}.**\n\nAllowed: ${allowed.join(', ')}\n\nFound: \`${priRaw || '(empty)'}\``,
+                  'Priority not allowed for catalog'
+                );
+                return;
+              }
+            }
+            const { data: finalComments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber });
+            for (const c of finalComments) {
+              if (c.user.type === 'Bot' && c.body.includes('Template Validation')) {
+                await github.rest.issues.deleteComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: c.id });
+              }
+            }
+            await github.rest.issues.addLabels({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, labels: ['validation-passed'] });
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
+              body: `## ✅ Template Validation Passed\n\n**${catalogLabel}** — case will be created automatically.`
+            });
+            core.setOutput('validation_passed', 'true');
+            core.setOutput('sr_type', srTypeLabel.replace('SRType/', ''));
+            core.setOutput('case_type', 'Service Request');
+            core.setOutput('catalog_item', catalogLabel.replace('CatalogueItem/', ''));
+            core.setOutput('catalog_prefix', catalogLabel);
+            core.setOutput('failure_reason', '');
+
+  create-case:
+    needs: [gate, validate]
+    if: needs.validate.outputs.validation_passed == 'true'
+    uses: ./.github/workflows/servicenow-create-case.yml
+    secrets: inherit
+    with:
+      issue_number: ${{ needs.gate.outputs.issue_number }}
+      catalog_item: ${{ needs.validate.outputs.catalog_item }}
+      case_type: ${{ needs.validate.outputs.case_type }}
+      sr_type: ${{ needs.validate.outputs.sr_type }}
+      catalog_prefix: ${{ needs.validate.outputs.catalog_prefix }}
+
+  cr-watch:
+    needs: [gate, validate, create-case]
+    if: needs.create-case.outputs.sn_success == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          SERVICENOW_UI_URL: ${{ secrets.SERVICENOW_UI_URL }}
+        with:
+          script: |
+            const issueNumber = parseInt('${{ needs.gate.outputs.issue_number }}', 10);
+            const caseNumber = `${{ needs.create-case.outputs.case_number }}`;
+            const caseSysId = `${{ needs.create-case.outputs.case_sys_id }}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
+              body: `## 👀 Watching for Change Requests\n\nServiceNow case **${caseNumber || 'created'}** is monitored for CRs.\n\n---\n*GitHub Actions*`
+            });

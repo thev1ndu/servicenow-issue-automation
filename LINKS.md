@@ -1,0 +1,4 @@
+https://wso2sndev.service-now.com/now/nav/ui/classic/params/target/sys_script_include.do%3Fsys_id%3D88a8fe9d1bf407100bb3da47b04bcb0d%26sysparm_record_target%3Dsys_script_include%26sysparm_record_row%3D1%26sysparm_record_rows%3D2%26sysparm_record_list%3DnameSTARTSWITHGithubRepo%255Ename%2521%253DSNCAPICallWrapper%255EORDERBYname
+
+https://wso2sndev.service-now.com/now/nav/ui/classic/params/target/sys_properties.do%3Fsys_id%3D3e4d72511b7807100bb3da47b04bcb5b%26sysparm_record_target%3Dsys_properties%26sysparm_record_row%3D1%26sysparm_record_rows%3D1%26sysparm_record_list%3DnameSTARTSWITHgithub.dispatch%255EORDERBYname
+

@@ -1,0 +1,207 @@
+name: ServiceNow · create case
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: string
+      catalog_item:
+        required: true
+        type: string
+      case_type:
+        required: true
+        type: string
+      sr_type:
+        required: false
+        type: string
+        default: ""
+      catalog_prefix:
+        required: false
+        type: string
+        default: ""
+    outputs:
+      case_number:
+        value: ${{ jobs.send.outputs.case_number }}
+      case_sys_id:
+        value: ${{ jobs.send.outputs.case_sys_id }}
+      sn_success:
+        value: ${{ jobs.send.outputs.sn_success }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SERVICENOW_PRODUCT: "WSO2 API Manager 1.10.0 Developer Portal"
+  SERVICENOW_PROJECT: "Customer Portal Customer Project1 - Subscription"
+  SERVICENOW_URL: ${{ secrets.SERVICENOW_URL }}
+  SERVICENOW_UI_URL: ${{ secrets.SERVICENOW_UI_URL }}
+
+concurrency:
+  group: servicenow-issue-${{ inputs.issue_number || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      case_number: ${{ steps.send_servicenow.outputs.case_number }}
+      case_sys_id: ${{ steps.send_servicenow.outputs.case_sys_id }}
+      sn_success: ${{ steps.send_servicenow.outputs.sn_success }}
+    steps:
+      - id: resolve
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = parseInt('${{ inputs.issue_number }}', 10);
+            const catalogItem = `${{ inputs.catalog_item }}` || 'General Requests';
+            const caseType = `${{ inputs.case_type }}` || 'Service Request';
+            const srType = `${{ inputs.sr_type }}` || '';
+            if (!issueNumber || Number.isNaN(issueNumber)) { core.setFailed('No issue number'); return; }
+            core.setOutput('issue_number', String(issueNumber));
+            core.setOutput('catalog_item', catalogItem);
+            core.setOutput('case_type', caseType);
+            core.setOutput('sr_type', srType);
+            core.setOutput('catalog_prefix', `${{ inputs.catalog_prefix }}`);
+
+      - id: get_issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = parseInt('${{ steps.resolve.outputs.issue_number }}');
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber
+            });
+            if (!issue.labels.some(l => l.name === 'validation-passed')) {
+              core.setOutput('should_process', 'false');
+              return;
+            }
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber
+            });
+            if (comments.some(c => c.user.type === 'Bot' && c.body.includes('ServiceNow Case Created Successfully'))) {
+              core.setOutput('should_process', 'false');
+              return;
+            }
+            core.setOutput('should_process', 'true');
+            core.setOutput('issue_body', issue.body || '');
+            core.setOutput('issue_title', issue.title || '');
+            core.setOutput('issue_url', issue.html_url || '');
+            core.setOutput('github_user', issue.user.login || '');
+            core.setOutput('labels', issue.labels.map(l => l.name).join(', '));
+
+      - id: extract_fields
+        if: steps.get_issue.outputs.should_process == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `${{ steps.get_issue.outputs.issue_body }}`;
+            const catalogItem = '${{ steps.resolve.outputs.catalog_item }}';
+            const caseType = '${{ steps.resolve.outputs.case_type }}';
+            function extractAllFields(body) {
+              const fields = {};
+              const regex = /###\s+([^\n]+)\s*\n+([^\n][\s\S]*?)(?=\n+###|\n*$)/g;
+              const knownFields = {
+                'template marker': 'template_marker',
+                'servicenow catalog item': 'catalog_item',
+                'catalog item': 'catalog_item',
+                'case type': 'case_type',
+                'priority': 'priority',
+                'severity': 'priority',
+                'short description': 'u_short_description',
+                'description': 'description',
+                'detailed description': 'description',
+                'impact': 'u_impact',
+                'impact description (overall)': 'u_impact_description_overall',
+                'impact description (customer)': 'u_impact_description_customer',
+                'environment details': 'u_project_environment',
+                'environment': 'u_project_environment',
+                'affected component': 'u_affected_component',
+                'affected services': 'u_affected_services',
+                'service outage/downtime': 'u_service_outage',
+                'is a maintenance window required or not': 'u_maintenance_window',
+                'maintenance window': 'u_maintenance_window',
+                'implementation plan': 'u_implementation_plan',
+                'test plan': 'u_test_plan',
+                'monitoring checks': 'u_monitoring_checks',
+                'request details': 'u_request_details'
+              };
+              let match;
+              while ((match = regex.exec(body)) !== null) {
+                const label = match[1].trim();
+                const value = match[2].trim();
+                if (!value || value === '_No response_' || value === 'No response') continue;
+                const normalized = label.toLowerCase();
+                const fieldId = knownFields[normalized] ?? ('u_' + label.replace(/[^\w\s-]/g, '').trim().toLowerCase().replace(/\s+/g, '_').replace(/^u_+/, ''));
+                fields[fieldId] = value;
+              }
+              return fields;
+            }
+            const allFields = extractAllFields(body);
+            const priorityMap = { Critical: '1 - Critical', High: '2 - High', Moderate: '3 - Moderate', Low: '4 - Low' };
+            const rawPriority = allFields.priority || 'Moderate';
+            allFields.priority = priorityMap[rawPriority] || '3 - Moderate';
+            if (allFields.u_project_environment) {
+              allFields.u_project_environment = allFields.u_project_environment.split(',').map(e => e.trim()).filter(Boolean).join(', ');
+            }
+            core.setOutput('all_fields', JSON.stringify(allFields));
+            core.setOutput('catalog_item', catalogItem);
+            core.setOutput('case_type', caseType);
+            core.setOutput('priority', allFields.priority);
+            core.setOutput('environment', allFields.u_project_environment || 'Development');
+
+      - id: build_payload
+        if: steps.get_issue.outputs.should_process == 'true'
+        run: |
+          ALL_FIELDS='${{ steps.extract_fields.outputs.all_fields }}'
+          FORMATTED_DESCRIPTION=$(echo "$ALL_FIELDS" | jq -r '(to_entries | map("<strong>" + (.key | gsub("^u_";"") | gsub("_";" ") | ascii_upcase) + ":</strong><br/>" + (.value | gsub("\n";"<br/>")) + "<br/><br/>") | join("")) + "<br/><strong>─────────────────────────────────────</strong><br/>"')
+          echo "$ALL_FIELDS" | jq --arg project "${{ env.SERVICENOW_PROJECT }}" --arg product "${{ env.SERVICENOW_PRODUCT }}" --arg title "${{ steps.get_issue.outputs.issue_title }}" --arg issue_number "${{ steps.resolve.outputs.issue_number }}" --arg issue_url "${{ steps.get_issue.outputs.issue_url }}" --arg u_github_issue_url "${{ steps.get_issue.outputs.issue_url }}" --arg github_user "${{ steps.get_issue.outputs.github_user }}" --arg repository_full_name "${{ github.repository }}" --arg labels "${{ steps.get_issue.outputs.labels }}" --arg description "$FORMATTED_DESCRIPTION" --arg catalog_item "${{ steps.extract_fields.outputs.catalog_item }}" --arg case_type "${{ steps.extract_fields.outputs.case_type }}" --arg catalog_prefix "${{ steps.resolve.outputs.catalog_prefix }}" '. + {project: $project, product: $product, title: $title, issue_number: $issue_number, issue_url: $issue_url, u_github_issue_url: $u_github_issue_url, github_user: $github_user, repository_full_name: $repository_full_name, labels: $labels, description: $description, catalog_item: $catalog_item, case_type: $case_type, catalog_prefix: $catalog_prefix}' > payload.json
+
+      - id: send_servicenow
+        if: steps.get_issue.outputs.should_process == 'true'
+        run: |
+          HTTP_CODE=$(curl -X POST -H "Content-Type: application/json" -H "User-Agent: GitHub-Actions-WSO2/1.0" -u "${{ secrets.SERVICENOW_USERNAME }}:${{ secrets.SERVICENOW_PASSWORD }}" -d @payload.json -w "%{http_code}" -o response.json -s "${{ secrets.SERVICENOW_URL }}")
+          if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+            CASE_NUMBER=$(jq -r '.result.case_number // .case_number // empty' response.json)
+            CASE_SYS_ID=$(jq -r '.result.sys_id // .result.case_sys_id // .case_sys_id // .sys_id // empty' response.json)
+            echo "case_number=$CASE_NUMBER" >> $GITHUB_OUTPUT
+            echo "case_sys_id=$CASE_SYS_ID" >> $GITHUB_OUTPUT
+            echo "sn_success=true" >> $GITHUB_OUTPUT
+          else
+            echo "sn_success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - if: success() && steps.get_issue.outputs.should_process == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const issueNum = parseInt('${{ steps.resolve.outputs.issue_number }}');
+            let response = {};
+            try { response = JSON.parse(fs.readFileSync('response.json', 'utf8')); if (response.result) response = response.result; } catch (_) {}
+            const caseNumber = response.case_number || 'Unknown';
+            const caseSysId = response.case_sys_id || response.sys_id || '';
+            const caseUrl = caseSysId ? `${{ secrets.SERVICENOW_UI_URL }}/now/nav/ui/classic/params/target/sn_customerservice_case.do?sys_id=${caseSysId}&sysparm_view=wso2_cs_generic` : null;
+            const caseDisplay = caseUrl ? `[${caseNumber}](${caseUrl})` : `\`${caseNumber}\``;
+            let allFields = {};
+            try { allFields = JSON.parse(`${{ steps.extract_fields.outputs.all_fields }}`); } catch (_) {}
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNum,
+              body: `## ✅ ServiceNow Case Created Successfully\n\n**Case Number:** ${caseDisplay}\n\n### Request Details\n- **Catalog:** ${{ steps.extract_fields.outputs.catalog_item }}\n- **Type:** ${{ steps.extract_fields.outputs.case_type }}\n- **Priority:** ${{ steps.extract_fields.outputs.priority }}\n- **Environment:** ${{ steps.extract_fields.outputs.environment }}\n\n### Auto-Mapped\n- **Project:** ${{ env.SERVICENOW_PROJECT }}\n- **Product:** ${{ env.SERVICENOW_PRODUCT }}\n\n---\n*${Object.keys(allFields).length} fields auto-extracted.*\n*Automated via GitHub Actions*`
+            });
+
+      - if: failure() && steps.get_issue.outputs.should_process == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const catalogItem = '${{ steps.resolve.outputs.catalog_item }}';
+            const caseType = '${{ steps.resolve.outputs.case_type }}';
+            const issueNum = parseInt('${{ steps.resolve.outputs.issue_number }}', 10);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: issueNum,
+              body: `## ❌ ServiceNow Case Creation Failed\n\n**Catalog:** ${catalogItem}\n**Case type:** ${caseType}\n\n[View workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n---\n*Contact support if the issue persists.*`
+            });
