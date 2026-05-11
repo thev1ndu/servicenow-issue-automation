@@ -113,6 +113,8 @@ jobs:
               for (const lbl of labels.filter(l => l.startsWith('SRType/') || l.startsWith('CatalogueItem/'))) {
                 try { await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, name: lbl }); } catch (_) {}
               }
+              try { await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, name: 'validation-passed' }); } catch (_) {}
+              await github.rest.issues.addLabels({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, labels: ['validation-failed'] });
               core.setOutput('validation_passed', 'false');
               core.setOutput('failure_reason', reason);
               core.setFailed('Validation: ' + reason);
@@ -131,6 +133,8 @@ jobs:
                   for (const lbl of [srTypeLabel, catalogLabel].filter(Boolean)) {
                     try { await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, name: lbl }); } catch (_) {}
                   }
+                  try { await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, name: 'validation-passed' }); } catch (_) {}
+                  await github.rest.issues.addLabels({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, labels: ['validation-failed'] });
                 }
               }
               core.setOutput('validation_passed', 'false');
@@ -145,6 +149,8 @@ jobs:
               const { data: ex } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber });
               const dup = ex.some(c => c.user.type === 'Bot' && c.body.includes('Template Validation Failed') && c.body.includes('Missing'));
               if (!dup) await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, body: msg });
+              try { await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, name: 'validation-passed' }); } catch (_) {}
+              await github.rest.issues.addLabels({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, labels: ['validation-failed'] });
               core.setOutput('validation_passed', 'false');
               core.setOutput('failure_reason', 'Missing required labels');
               return;
@@ -195,6 +201,7 @@ jobs:
               }
             }
             await github.rest.issues.addLabels({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, labels: ['validation-passed'] });
+            try { await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, name: 'validation-failed' }); } catch (_) {}
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
               body: `## ✅ Template Validation Passed\n\n**${catalogLabel}** — case will be created automatically.`

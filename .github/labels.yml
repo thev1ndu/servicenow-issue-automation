@@ -35,4 +35,8 @@
 
 - name: "validation-passed"
   color: "0e8a16"
-  description: "SR template validated — case will be created automatically"
+  description: "SR template passed validation"
+
+- name: "validation-failed"
+  color: "b60205"
+  description: "SR template failed validation — check the bot comment for details"
