@@ -28,7 +28,6 @@ on:
         value: ${{ jobs.send.outputs.sn_success }}
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   SERVICENOW_PRODUCT: "WSO2 API Manager 1.10.0 Developer Portal"
   SERVICENOW_PROJECT: "Customer Portal Customer Project1 - Subscription"
   SERVICENOW_URL: ${{ secrets.SERVICENOW_URL }}
@@ -52,7 +51,7 @@ jobs:
       sn_success: ${{ steps.send_servicenow.outputs.sn_success }}
     steps:
       - id: resolve
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issueNumber = parseInt('${{ inputs.issue_number }}', 10);
@@ -67,7 +66,7 @@ jobs:
             core.setOutput('catalog_prefix', `${{ inputs.catalog_prefix }}`);
 
       - id: get_issue
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issueNumber = parseInt('${{ steps.resolve.outputs.issue_number }}');
@@ -94,7 +93,7 @@ jobs:
 
       - id: extract_fields
         if: steps.get_issue.outputs.should_process == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           ISSUE_BODY: ${{ steps.get_issue.outputs.issue_body }}
         with:
@@ -200,7 +199,7 @@ jobs:
           fi
 
       - if: success() && steps.get_issue.outputs.should_process == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           ALL_FIELDS_JSON: ${{ steps.extract_fields.outputs.all_fields }}
         with:
@@ -221,7 +220,7 @@ jobs:
             });
 
       - if: failure() && steps.get_issue.outputs.should_process == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const catalogItem = '${{ steps.resolve.outputs.catalog_item }}';

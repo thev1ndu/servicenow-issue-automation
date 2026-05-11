@@ -3,8 +3,6 @@ on:
   issues:
     types: [opened, edited, labeled]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
   group: sn-pipeline-${{ github.event.issue.number }}
@@ -23,7 +21,7 @@ jobs:
       label_name: ${{ steps.c.outputs.label_name }}
     steps:
       - id: c
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issue = context.payload.issue;
@@ -68,7 +66,7 @@ jobs:
       failure_reason: ${{ steps.v.outputs.failure_reason }}
     steps:
       - id: v
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issueNumber = context.payload.issue?.number ?? parseInt('${{ needs.gate.outputs.issue_number }}', 10);
@@ -225,7 +223,7 @@ jobs:
     if: needs.create-case.outputs.sn_success == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v8
         env:
           SERVICENOW_UI_URL: ${{ secrets.SERVICENOW_UI_URL }}
         with:
