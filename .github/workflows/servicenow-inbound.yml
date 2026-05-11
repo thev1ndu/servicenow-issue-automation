@@ -46,7 +46,7 @@ jobs:
             }
             async function fetchAllCRs(parentSysId) {
               if (!parentSysId) return [];
-              const snUrl = process.env.SERVICENOW_URL.replace(/\/api\/.*/, '');
+              const snUrl = process.env.SERVICENOW_UI_URL || process.env.SERVICENOW_URL.replace(/\/api\/.*/, '');
               const auth = Buffer.from(`${process.env.SERVICENOW_USERNAME}:${process.env.SERVICENOW_PASSWORD}`).toString('base64');
               const queryUrl = `${snUrl}/api/now/table/task?sysparm_query=parent=${parentSysId}^sys_class_name=change_request&sysparm_fields=number,state,sys_id&sysparm_display_value=true&sysparm_limit=50`;
               const res = await fetch(queryUrl, { headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' } });

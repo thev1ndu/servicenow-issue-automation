@@ -1,138 +1,255 @@
-# GitHub Issues ↔ ServiceNow — setup guide
+# GitHub Issues → ServiceNow Case Automation
 
-This repository uses **GitHub Actions** to open ServiceNow cases from labeled issues and to post **Change Request (CR)** updates back to the matching GitHub issue. ServiceNow only needs to call GitHub’s **[repository dispatch](https://docs.github.com/en/rest/repos/repos#create-a-repository-dispatch-event)** API when a CR is created or when its state changes.
-
-This guide uses **Flow Designer** (ServiceNow’s visual workflow builder; sometimes still referred to as “workflow” in the UI) and **server-side REST scripting** with **`sn_ws.RESTMessageV2`**. That is the supported way to send **outbound** HTTPS from ServiceNow.
-
-**Important platform note:** In ServiceNow, **Scripted REST API** is mainly for **inbound** APIs (external systems call *your* instance). Calling GitHub is **outbound**, so the implementation lives in a **Script Include** (or REST Message) using **`RESTMessageV2`**, which Flow Designer invokes with a **Run Script** step. If your standards require the Scripted REST *module* as the container, you can paste the same script into a Scripted REST resource and call it from Flow; the GitHub payload and headers below stay the same.
+A **template and testing repository** for automatically creating ServiceNow cases from GitHub issues and posting Change Request updates back to GitHub.
 
 ---
 
-## What you need first
-
-| Item | Purpose |
-|------|--------|
-| GitHub org/user and repository name | Build the dispatch URL |
-| GitHub token | `POST /repos/{owner}/{repo}/dispatches` |
-| Issue number on GitHub for each case | Stored on the case (or derived) as `github_issue_number` in the payload |
-| ServiceNow admin or `sn_flow_designer` + script access | Create Flow + Script Include |
-
-### GitHub token
-
-1. In GitHub: **Settings → Developer settings → Personal access tokens** (fine-grained or classic).
-2. For a **private** repo, the token needs at least:
-   - **Contents:** Read and write (repository dispatch is treated under repo content scope), or use a classic token with **`repo`** scope for private repositories.
-3. For **fine-grained** tokens: select the repository and grant **Contents** read/write (and **Metadata** read).
-4. Copy the token once; you will store it only in ServiceNow (credential alias or `sys_properties` — see below).
-
-### Dispatch URL
+## What this does
 
 ```
-https://api.github.com/repos/<OWNER>/<REPO>/dispatches
+GitHub Issue (labeled)
+        │
+        ▼
+  [Validation]  ← checks template, title format, required fields, label combo
+        │
+        ▼
+  [Case Created] → POST to ServiceNow Scripted REST API → ServiceNow Case
+        │
+        ▼
+  GitHub issue gets a comment with the case number + link
+
+ServiceNow CR created/state changed
+        │
+        ▼
+  ServiceNow fires repository_dispatch → GitHub
+        │
+        ▼
+  GitHub issue gets a comment with CR number + state
 ```
-
-Example: `https://api.github.com/repos/acme-corp/AutomationChoreoSR/dispatches`
-
-### Event types this repo listens for
-
-| `event_type` | When to use |
-|--------------|-------------|
-| `servicenow-cr-update` | CR created or CR state changed (required for CR → issue comments) |
-| `validation-passed` | Optional manual / automation path to (re)run case creation from GitHub; usually the issue pipeline adds the label itself |
-
-The workflows that handle these are `.github/workflows/servicenow-inbound.yml` and `.github/workflows/servicenow-create-case.yml`.
 
 ---
 
-## Part 1 — Script Include (outbound GitHub dispatch)
+## Repository structure
 
-Create a **Script Include** so Flow can call one place for all GitHub `repository_dispatch` calls.
+```
+.
+├── .github/
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── config.yml               # disables blank issues
+│   │   ├── sr-generic.md            # CatalogueItem/Generic Requests
+│   │   ├── sr-request-logs.md       # CatalogueItem/Request Logs
+│   │   ├── sr-standard-generic.md   # CatalogueItem/Standard Generic
+│   │   └── sr-information.md        # CatalogueItem/Information
+│   ├── labels.yml                   # label definitions (apply once)
+│   └── workflows/
+│       ├── issue-servicenow.yml     # main trigger: issue opened/labeled
+│       ├── servicenow-create-case.yml  # reusable: build payload + POST to SN
+│       └── servicenow-inbound.yml   # handle ServiceNow → GitHub events
+├── GUIDE/
+│   ├── README.md                    # ServiceNow setup index
+│   ├── step1.md                     # Script Include + system property
+│   ├── step2.md                     # Flow: CR created → dispatch
+│   ├── step3.md                     # Flow: CR state changed → dispatch
+│   └── step4.md                     # End-to-end testing
+├── HOWTHISWORKS.md                  # full end-to-end explanation
+├── ServiceNow.md                    # what was built on the SN instance
+├── LINKS.md                         # ServiceNow instance URL reference
+└── samples.md                       # curl samples to test without SN
+```
+
+---
+
+## Quick start
+
+### Prerequisites
+
+| Item | Where |
+|------|-------|
+| ServiceNow instance with CSM (Customer Service Management) | Your SN admin |
+| GitHub repo admin access | To set secrets and create labels |
+| ServiceNow admin or integration-user access | To create REST API + Script Include |
+
+### Step 1 — Set GitHub secrets
+
+In your repo: **Settings → Secrets and variables → Actions → New repository secret**
+
+| Secret name | Value |
+|-------------|-------|
+| `SERVICENOW_URL` | Full URL to the Scripted REST endpoint, e.g. `https://<instance>.service-now.com/api/<scope>/github_case/v1/case` |
+| `SERVICENOW_UI_URL` | Base instance URL, e.g. `https://<instance>.service-now.com` |
+| `SERVICENOW_USERNAME` | ServiceNow user with REST access |
+| `SERVICENOW_PASSWORD` | Password for the above user |
+
+### Step 2 — Configure ServiceNow
+
+Follow the step-by-step guide in [GUIDE/step1.md](GUIDE/step1.md):
+
+1. Create system property `github.dispatch.config` with your GitHub PAT + owner + repo
+2. Create Script Include `GitHubRepositoryDispatch`
+3. Create the Scripted REST API (`GitHub Case Integration`) — see [ServiceNow.md](ServiceNow.md) for the full script
+4. Create Business Rules (or Flows) for CR created/state changed — see [GUIDE/step2.md](GUIDE/step2.md) and [GUIDE/step3.md](GUIDE/step3.md)
+
+### Step 3 — Create labels in GitHub
+
+Apply all labels from [.github/labels.yml](.github/labels.yml) to your repo. You can use:
+
+```bash
+gh label create "CatalogueItem/Generic Requests" --color e4e669 --description "Catalog: Generic Requests (full field set)"
+gh label create "CatalogueItem/Request Logs"     --color e4e669 --description "Catalog: Request Logs (Priority must be Critical)"
+gh label create "CatalogueItem/Standard Generic" --color e4e669 --description "Catalog: Standard Generic (reduced field set)"
+gh label create "CatalogueItem/Information"      --color e4e669 --description "Catalog: Information Request"
+gh label create "SRType/Normal Change"           --color 0075ca --description "SR type: Normal Change"
+gh label create "SRType/Standard Change"         --color 0075ca --description "SR type: Standard Change"
+gh label create "SRType/Emergency Change"        --color d93f0b --description "SR type: Emergency Change"
+gh label create "validation-passed"              --color 0e8a16 --description "SR template validated — case will be created automatically"
+```
+
+### Step 4 — Customize for your project
+
+In [.github/workflows/servicenow-create-case.yml](.github/workflows/servicenow-create-case.yml), update the two env vars at the top:
+
+```yaml
+env:
+  SERVICENOW_PRODUCT: "your product name"
+  SERVICENOW_PROJECT: "your project name"
+```
+
+These are sent to ServiceNow with every case.
+
+### Step 5 — Test
+
+Use [samples.md](samples.md) to send test `repository_dispatch` events without touching ServiceNow.
+
+For the full label-driven pipeline, create an issue from one of the SR templates, add the required labels, and watch the workflow run.
+
+---
+
+## How to use (end users)
+
+1. Open a new issue using one of the SR templates (click **New Issue** in GitHub).
+2. Fill in all fields — do not leave `_No response_` in required sections.
+3. Set the issue title to start with `[SR-Change]:`.
+4. Add **both** required labels:
+   - One `SRType/` label (e.g. `SRType/Normal Change`)
+   - One `CatalogueItem/` label matching the template you used
+5. The workflow validates the issue. On success it posts "✅ Template Validation Passed" and creates the ServiceNow case automatically.
+6. When ServiceNow creates or updates a Change Request, a comment appears on the issue automatically.
+
+---
+
+## Workflow reference
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| `issue-servicenow.yml` | Issue opened, edited, or labeled | Gate → Validate → Create case → Watch for CRs |
+| `servicenow-create-case.yml` | `workflow_call` | Extract fields from issue body, POST payload to ServiceNow, comment result |
+| `servicenow-inbound.yml` | `repository_dispatch` | Handle CR created / CR state changed events from ServiceNow |
+
+### Required labels
+
+| Label | Set by | Purpose |
+|-------|--------|---------|
+| `SRType/<type>` | Human | Identifies the change type |
+| `CatalogueItem/<item>` | Human | Selects the SR form type and validation rules |
+| `validation-passed` | Workflow (automatic) | Signals validation passed; triggers case creation |
+
+### Catalog item field requirements
+
+| Label | Required fields |
+|-------|----------------|
+| `CatalogueItem/Generic Requests` | Short Description, Description, Priority, Impact, Impact Description (Overall), Impact Description (Customer), Environment Details, Affected Component, Affected Services, Service Outage/Downtime, Is a maintenance window required or not, Implementation Plan, Test Plan, Monitoring Checks |
+| `CatalogueItem/Request Logs` | Short Description, Description, Priority (**must be Critical**), Impact, Impact Description, Customer Project, Environment Details |
+| `CatalogueItem/Standard Generic` | Short Description, Description, Priority, Impact, Environment Details |
+| `CatalogueItem/Information` | Request Description, Impact, Customer Project |
+
+---
+
+## Further reading
+
+- [HOWTHISWORKS.md](HOWTHISWORKS.md) — full end-to-end flow explanation
+- [ServiceNow.md](ServiceNow.md) — ServiceNow instance configuration reference
+- [GUIDE/](GUIDE/) — step-by-step ServiceNow setup (Script Include, Flows, testing)
+- [samples.md](samples.md) — curl commands to test repository_dispatch without ServiceNow
+
+---
+
+## ServiceNow outbound setup (calling GitHub from ServiceNow)
+
+The rest of this document covers how ServiceNow sends Change Request events back to GitHub. This is the **outbound** direction: ServiceNow → GitHub.
+
+ServiceNow uses **Flow Designer** and **`sn_ws.RESTMessageV2`** (the platform-supported way to make outbound HTTPS calls). A **Script Include** (`GitHubRepositoryDispatch`) wraps the GitHub API call so all flows share one implementation.
+
+---
+
+### Part 1 — Script Include (outbound GitHub dispatch)
 
 1. Navigate to **System Definition → Script Includes → New**.
-2. **Name:** `GitHubRepositoryDispatch` (or your naming standard).
-3. **API name:** same as name, **Client callable:** false, **Application scope:** your scoped app or Global (follow your org rules).
-4. **Script:** use the template below; replace property names with yours.
-
-### Script Include template (Glide / Rhino)
+2. **Name:** `GitHubRepositoryDispatch`, **Client callable:** false.
+3. **Script:**
 
 ```javascript
 var GitHubRepositoryDispatch = Class.create();
 GitHubRepositoryDispatch.prototype = {
     initialize: function() {
-        // Optional: load from System Properties [github.token], [github.owner], [github.repo]
-        this.token = gs.getProperty('github.dispatch.token', '');
-        this.owner = gs.getProperty('github.dispatch.owner', '');
-        this.repo = gs.getProperty('github.dispatch.repo', '');
+        this.config = this._loadConfig();
+        this.token = this.config.token || '';
+        this.owner = this.config.owner || '';
+        this.repo = this.config.repo || '';
         this.baseUrl = 'https://api.github.com/repos/' + this.owner + '/' + this.repo + '/dispatches';
     },
 
-    /**
-     * @param {String} eventType - e.g. servicenow-cr-update | validation-passed
-     * @param {Object} clientPayload - JSON-serializable object (GitHub client_payload)
-     */
+    _loadConfig: function() {
+        var raw = gs.getProperty('github.dispatch.config', '{}');
+        try { return JSON.parse(raw); }
+        catch (e) { gs.error('GitHubRepositoryDispatch: Invalid JSON in github.dispatch.config'); return {}; }
+    },
+
     send: function(eventType, clientPayload) {
+        if (!eventType) return { ok: false, status: 0, body: 'missing_event_type' };
         if (!this.token || !this.owner || !this.repo) {
-            gs.error('GitHubRepositoryDispatch: missing token, owner, or repo property');
-            return { ok: false, status: 0, body: 'configuration' };
+            gs.error('GitHubRepositoryDispatch: Missing token, owner, or repo in github.dispatch.config');
+            return { ok: false, status: 0, body: 'configuration_error' };
         }
-        var rm = new sn_ws.RESTMessageV2();
-        rm.setHttpMethod('POST');
-        rm.setEndpoint(this.baseUrl);
-        rm.setRequestHeader('Accept', 'application/vnd.github+json');
-        rm.setRequestHeader('Authorization', 'Bearer ' + this.token);
-        rm.setRequestHeader('X-GitHub-Api-Version', '2022-11-28');
-        rm.setRequestHeader('Content-Type', 'application/json');
-
-        var body = {
-            event_type: eventType,
-            client_payload: clientPayload || {}
-        };
-        rm.setRequestBody(JSON.stringify(body));
-
-        var response = rm.execute();
-        var status = response.getStatusCode();
-        var responseBody = response.haveError() ? response.getErrorMessage() : response.getBody();
-        var ok = (status === 204);
-        if (!ok) {
-            gs.error('GitHubRepositoryDispatch failed: status=' + status + ' body=' + responseBody);
+        try {
+            var rm = new sn_ws.RESTMessageV2();
+            rm.setHttpMethod('POST');
+            rm.setEndpoint(this.baseUrl);
+            rm.setHttpTimeout(30000);
+            rm.setRequestHeader('Accept', 'application/vnd.github+json');
+            rm.setRequestHeader('Authorization', 'Bearer ' + this.token);
+            rm.setRequestHeader('X-GitHub-Api-Version', '2022-11-28');
+            rm.setRequestHeader('Content-Type', 'application/json');
+            rm.setRequestBody(JSON.stringify({ event_type: eventType, client_payload: clientPayload || {} }));
+            var response = rm.execute();
+            var status = response.getStatusCode();
+            var ok = (status === 204);
+            if (!ok) gs.error('GitHubRepositoryDispatch failed: status=' + status);
+            return { ok: ok, status: status, body: response.haveError() ? response.getErrorMessage() : response.getBody() };
+        } catch (ex) {
+            gs.error('GitHubRepositoryDispatch exception: ' + ex.message);
+            return { ok: false, status: 0, body: ex.message };
         }
-        return { ok: ok, status: status, body: responseBody };
     },
 
     type: 'GitHubRepositoryDispatch'
 };
 ```
 
-5. **System Properties** (recommended): **System Definition → System Properties → New** (or set in your scoped app config):
+4. Create system property `github.dispatch.config` (type: String or Password):
 
-| Name | Value |
-|------|--------|
-| `github.dispatch.token` | GitHub PAT (mark as **masked** if you use a wrapper property) |
-| `github.dispatch.owner` | GitHub org or username |
-| `github.dispatch.repo` | Repository name |
-
-**Security:** Prefer **Credentials** and **Connection & Credential Aliases** with a **REST** credential type, and read the secret in script only if your security team allows it; otherwise keep the token in an encrypted system property or Edge Encryption–enabled storage per your policy.
+```json
+{
+  "token": "github_pat_xxxxx",
+  "owner": "your-github-org-or-user",
+  "repo": "your-repo-name"
+}
+```
 
 ---
 
-## Part 2 — Payload contracts (must match GitHub Actions)
+### Part 2 — Payload contracts
 
-### A. `servicenow-cr-update` (`event_type`)
-
-GitHub workflow reads `client_payload` fields (see `servicenow-inbound.yml`).
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `github_issue_number` | **Yes** | GitHub issue number (integer or string) |
-| `action` | **Yes** for comments | `created` or `state_changed` |
-| `cr_number` | For display | e.g. `CHG0001234` |
-| `cr_sys_id` | Recommended | Change Request `sys_id` (for links) |
-| `cr_state` | Recommended | Display / current state label |
-| `cr_environment` | Optional | Defaults to `Not specified` in GitHub |
-| `case_sys_id` | Recommended | Parent case `sys_id` (GitHub queries linked CRs) |
-| `previous_state` | For `state_changed` | Prior state label |
-
-**Example — CR created**
+#### `servicenow-cr-update` — CR created
 
 ```json
 {
@@ -149,7 +266,7 @@ GitHub workflow reads `client_payload` fields (see `servicenow-inbound.yml`).
 }
 ```
 
-**Example — CR state changed**
+#### `servicenow-cr-update` — CR state changed
 
 ```json
 {
@@ -166,222 +283,40 @@ GitHub workflow reads `client_payload` fields (see `servicenow-inbound.yml`).
 }
 ```
 
-### B. `validation-passed` (optional)
-
-Used only if you intentionally trigger GitHub’s `servicenow-inbound.yml` → `servicenow-create-case.yml` path from ServiceNow (for example a manual “retry case creation” flow).
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `issue_number` | **Yes** | GitHub issue number |
-| `catalog_item` | Optional | Default `General Requests` |
-| `case_type` | Optional | Default `Service Request` |
-| `sr_type` | Optional | Free text |
-
----
-
-## Part 3 — Flow Designer (“Workflow Builder”) setup
-
-Use **Flow Designer** so you do not maintain legacy **Workflow** (`wf_workflow`) XML unless required.
-
-### Flow 1 — Notify GitHub when a Change Request is **inserted**
-
-1. **Flow Designer → New → Flow**.
-2. **Name:** e.g. `GitHub - CR created dispatch`.
-3. **Run as:** System (if the Script Include reads system properties with a service account token).
-4. **Trigger:** **Record** → **Change Request** (`change_request`) → **Created** (or **Inserted** depending on version wording).
-5. Add a **Run Script** action (or **Run Script** in a subflow) **after** trigger, with script similar to:
-
-```javascript
-(function execute(inputs, outputs) {
-    // Map from trigger record — adjust field names to your case/CR model
-    var cr = inputs.change_request; // Flow passes current record in your SN version; if not, use a "Get Record" step first
-
-    var issueNum = cr.u_github_issue_number; // replace with your field that stores GitHub issue #
-    if (!issueNum) {
-        return;
-    }
-
-    var dispatch = new GitHubRepositoryDispatch();
-    var payload = {
-        github_issue_number: parseInt(issueNum, 10),
-        action: 'created',
-        cr_number: cr.number + '',
-        cr_sys_id: cr.sys_id + '',
-        cr_state: (cr.state + '') || '',
-        cr_environment: cr.u_environment || 'Not specified', // replace with your field
-        case_sys_id: (cr.parent + '') || '' // parent case sys_id if CR.parent points to case task
-    };
-
-    var result = dispatch.send('servicenow-cr-update', payload);
-    outputs.http_status = result.status;
-    outputs.ok = result.ok;
-})(inputs, outputs);
-```
-
-**Note:** In Flow Designer, the **trigger record** is often exposed as `inputs.current` or via a **Get Record ID from Trigger** pattern depending on release. Use **Data Pill** picker to bind `change_request` fields instead of guessing variable names. Replace `u_github_issue_number` with the field your integration uses to store the GitHub issue number (populated when the case is created from GitHub or from your catalog).
-
-6. **Save** and **Activate** the flow.
-
-### Flow 2 — Notify GitHub when Change Request **state** changes
-
-1. **New Flow** → **Name:** `GitHub - CR state changed dispatch`.
-2. **Trigger:** **Record** → **Change Request** → **Updated**.
-3. Add a **Condition** (Flow logic): **State** (or `state`) **is changed** — use the condition builder so the flow only runs on state transitions.
-4. **Run Script** similar to Flow 1, but:
-
-```javascript
-(function execute(inputs, outputs) {
-    var cr = inputs.change_request; // bind via pills
-    var issueNum = cr.u_github_issue_number;
-    if (!issueNum) return;
-
-    var dispatch = new GitHubRepositoryDispatch();
-    var payload = {
-        github_issue_number: parseInt(issueNum, 10),
-        action: 'state_changed',
-        cr_number: cr.number + '',
-        cr_sys_id: cr.sys_id + '',
-        cr_state: (cr.state + '') || '',
-        previous_state: (inputs.previous_state || '') + '', // from "Get Change" before update or audit — see note below
-        case_sys_id: (cr.parent + '') || ''
-    };
-    outputs.result = dispatch.send('servicenow-cr-update', payload);
-})(inputs, outputs);
-```
-
-**Previous state:** Flow **Record Updated** triggers often expose **previous values** in the **Trigger** payload or via a **Get Record** step on `sys_audit` / **Business Rule**-style scratchpad. If your instance does not expose `previous_state` easily, add a **Before Business Rule** on `change_request` that copies `current.state` to `u_previous_state` on the record before update, then read `u_previous_state` from the **current** record in the Flow (adjust design to your standards).
-
-### Testing the Flow
-
-1. Open **Flow Designer → Flow executions** (or **Monitor**) and run a test CR with a known `github_issue_number`.
-2. In GitHub: **Actions** tab → confirm a run of **ServiceNow inbound** for `servicenow-cr-update`.
-3. On the issue: confirm a new comment from the workflow.
+| Field | Required | Notes |
+|-------|----------|-------|
+| `github_issue_number` | Yes | GitHub issue number |
+| `action` | Yes | `created` or `state_changed` |
+| `cr_number` | Yes | e.g. `CHG0001234` |
+| `cr_sys_id` | Recommended | For direct link in comment |
+| `cr_state` | Recommended | Display value |
+| `cr_environment` | Optional | Defaults to `Not specified` |
+| `case_sys_id` | Recommended | GitHub queries linked CRs using this |
+| `previous_state` | For `state_changed` | Prior state display value |
 
 ---
 
-## Part 4 — Scripted REST API (all-in-one resource)
+### Part 3 — Flow Designer setup
 
-Use this when you want the GitHub call to live **only** in **Scripted REST** (plus Flow). The resource accepts JSON from Flow (or another server-side caller), then uses **`sn_ws.RESTMessageV2`** to call GitHub (outbound). Scripted REST here is the **container**; GitHub is still reached via **`RESTMessageV2`** (platform standard).
+See [GUIDE/step2.md](GUIDE/step2.md) (CR created) and [GUIDE/step3.md](GUIDE/step3.md) (CR state changed) for click-by-click Flow Designer instructions.
 
-### 4.1 Create the API
+**Flow 1 — CR created**
+- Trigger: Change Request → Created
+- Run Script: call `GitHubRepositoryDispatch.send('servicenow-cr-update', { action: 'created', ... })`
 
-1. Open your **scoped application** (recommended) or stay in Global per policy.
-2. **Scripted REST APIs → New**  
-   - **API ID:** `github_repository_dispatch` (example)  
-   - **API name:** human-readable label  
-   - **Active:** true  
-3. **Save**, then **Resources → New**:
-   - **HTTP method:** `POST`
-   - **Relative path:** `/repository_dispatch` (full path becomes `/api/<namespace>/<api_id>/repository_dispatch` — exact prefix depends on scope; use **Preview** in the form to copy the full URL).
-   - **Requires authentication:** true (so only authenticated ServiceNow users/flows call it).
-   - **Requires ACL authorization:** true — create an **ACL** on this API resource limited to **admin** and your **integration user** role.
-
-### 4.2 Resource script (paste into the Scripted REST resource)
-
-Request body from Flow should be:
-
-```json
-{
-  "event_type": "servicenow-cr-update",
-  "client_payload": {
-    "github_issue_number": 42,
-    "action": "created",
-    "cr_number": "CHG0001001",
-    "cr_sys_id": "...",
-    "cr_state": "New",
-    "cr_environment": "Production",
-    "case_sys_id": "...",
-    "previous_state": ""
-  }
-}
-```
-
-Resource script:
-
-```javascript
-(function process(/*RESTAPIRequest*/ request, /*RESTAPIResponse*/ response) {
-    var body = request.body.data;
-    if (!body || !body.event_type) {
-        response.setStatus(400);
-        response.setBody({ error: 'event_type required' });
-        return;
-    }
-
-    var token = gs.getProperty('github.dispatch.token', '');
-    var owner = gs.getProperty('github.dispatch.owner', '');
-    var repo = gs.getProperty('github.dispatch.repo', '');
-    if (!token || !owner || !repo) {
-        response.setStatus(500);
-        response.setBody({ error: 'GitHub properties not configured' });
-        return;
-    }
-
-    var endpoint = 'https://api.github.com/repos/' + owner + '/' + repo + '/dispatches';
-    var rm = new sn_ws.RESTMessageV2();
-    rm.setHttpMethod('POST');
-    rm.setEndpoint(endpoint);
-    rm.setRequestHeader('Accept', 'application/vnd.github+json');
-    rm.setRequestHeader('Authorization', 'Bearer ' + token);
-    rm.setRequestHeader('X-GitHub-Api-Version', '2022-11-28');
-    rm.setRequestHeader('Content-Type', 'application/json');
-    rm.setRequestBody(JSON.stringify({
-        event_type: body.event_type,
-        client_payload: body.client_payload || {}
-    }));
-
-    var res = rm.execute();
-    var code = res.getStatusCode();
-    var ok = (code === 204);
-    response.setStatus(ok ? 200 : 502);
-    response.setBody({
-        ok: ok,
-        github_status: code,
-        message: res.haveError() ? res.getErrorMessage() : res.getBody()
-    });
-})(request, response);
-```
-
-### 4.3 Call Scripted REST from Flow Designer
-
-1. In your **Change Request** flow, add action **Send REST Message** / **REST** (wording varies by release) — or use **Run Script** with `RESTMessageV2` pointed at **your instance** Scripted REST URL (same pattern as GitHub but with Basic / OAuth for the instance).
-2. **Method:** `POST`
-3. **Relative path / URL:** paste the **full Scripted REST URL** from the API record (e.g. `https://<instance>.service-now.com/api/x_yourapp/github_repository_dispatch/repository_dispatch`).
-4. **Authentication:** user whose session can pass the ACL (often **Run as** system with **Connection** using **Credential** for the integration user).
-5. **Request body:** build JSON with **Data pills** from the trigger record (`github_issue_number`, `cr_number`, etc.) matching the structure in §4.2.
-
-**Tip:** If your Flow version has **Run Script** only, you can skip Scripted REST and call `GitHubRepositoryDispatch` from Part 1 directly; both approaches end with the same GitHub API call.
+**Flow 2 — CR state changed**
+- Trigger: Change Request → Updated, Condition: State changes
+- Run Script: call `GitHubRepositoryDispatch.send('servicenow-cr-update', { action: 'state_changed', ... })`
 
 ---
 
-## Part 5 — GitHub repository checklist (for your admins)
-
-Secrets used by Actions (names may vary in your fork):
-
-- `SERVICENOW_URL`, `SERVICENOW_UI_URL`, `SERVICENOW_USERNAME`, `SERVICENOW_PASSWORD` — used by workflows to read CRs and post issue comments.
-- Workflows: `issue-servicenow.yml`, `servicenow-create-case.yml`, `servicenow-inbound.yml`.
-
-No GitHub configuration is required beyond the token and dispatch URL described above.
-
----
-
-## Troubleshooting
+### Troubleshooting
 
 | Symptom | Check |
-|--------|--------|
-| HTTP 404 from GitHub | `OWNER` / `REPO` wrong or token cannot see repo |
-| HTTP 401 / 403 | Token scopes; fine-grained token must include **Contents** on that repo |
-| HTTP 422 | Body must include `event_type`; `client_payload` must be a JSON object (can be empty for some events, not for ours) |
-| GitHub Actions never runs | Repo **Settings → Actions** enabled; `event_type` string must match **exactly** `servicenow-cr-update` or `validation-passed` |
-| No issue comment | `github_issue_number` missing or wrong; `action` not `created` / `state_changed` for CR flow |
-| Duplicate comments | Add Flow **Condition** or BR debounce so the same transition does not fire twice |
-
----
-
-## Summary
-
-1. Store **GitHub PAT** and **owner/repo** in ServiceNow (properties or credentials).
-2. Add **Script Include** `GitHubRepositoryDispatch` using **`sn_ws.RESTMessageV2`** to `POST .../dispatches`.
-3. Build **Flow Designer** flows on **Change Request** insert and state change that **Run Script** and pass **`servicenow-cr-update`** payloads matching the tables in this README.
-4. Keep **`github_issue_number`** (or your field mapped to it) populated on the CR or parent case so ServiceNow knows which issue to update.
-
-That completes the ServiceNow side using **Flow Designer** and **scripted outbound REST** (`RESTMessageV2`) aligned with how GitHub Actions in this repository expect to be triggered.
+|---------|-------|
+| HTTP 404 from GitHub | `owner` / `repo` wrong in `github.dispatch.config` |
+| HTTP 401 / 403 | Token missing permissions; fine-grained token needs **Contents: Read and write** on the repo |
+| HTTP 422 | Body must include `event_type`; `client_payload` must be a JSON object |
+| GitHub Actions never runs | Repo Settings → Actions enabled; `event_type` must exactly match `servicenow-cr-update` |
+| No issue comment | `github_issue_number` wrong or missing; `action` not `created`/`state_changed` |
+| "All CRs" list shows only one | `case_sys_id` missing from payload, or ServiceNow credentials in GitHub secrets are wrong |

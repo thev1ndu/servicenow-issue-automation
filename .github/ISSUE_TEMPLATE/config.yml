@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: How this works
+    url: https://github.com/thev1ndu/AutomationChoreoSR/blob/main/HOWTHISWORKS.md
+    about: Read the end-to-end documentation before filing a request.

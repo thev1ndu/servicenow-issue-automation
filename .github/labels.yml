@@ -1,0 +1,38 @@
+# GitHub labels required by the ServiceNow automation.
+# Apply these to your repo with: gh label create or the GitHub Labels UI.
+#
+# SRType/* labels — set by whoever processes the SR (identifies the change type)
+# CatalogueItem/* labels — set by the requester to pick the SR form type
+# validation-passed — set automatically by the workflow after template validation
+
+- name: "SRType/Normal Change"
+  color: "0075ca"
+  description: "SR type: Normal Change"
+
+- name: "SRType/Standard Change"
+  color: "0075ca"
+  description: "SR type: Standard Change"
+
+- name: "SRType/Emergency Change"
+  color: "d93f0b"
+  description: "SR type: Emergency Change"
+
+- name: "CatalogueItem/Generic Requests"
+  color: "e4e669"
+  description: "Catalog: Generic Requests (full field set)"
+
+- name: "CatalogueItem/Request Logs"
+  color: "e4e669"
+  description: "Catalog: Request Logs (Priority must be Critical)"
+
+- name: "CatalogueItem/Standard Generic"
+  color: "e4e669"
+  description: "Catalog: Standard Generic (reduced field set)"
+
+- name: "CatalogueItem/Information"
+  color: "e4e669"
+  description: "Catalog: Information Request"
+
+- name: "validation-passed"
+  color: "0e8a16"
+  description: "SR template validated — case will be created automatically"

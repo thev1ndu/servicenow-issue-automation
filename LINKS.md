@@ -1,4 +1,49 @@
-https://wso2sndev.service-now.com/now/nav/ui/classic/params/target/sys_script_include.do%3Fsys_id%3D88a8fe9d1bf407100bb3da47b04bcb0d%26sysparm_record_target%3Dsys_script_include%26sysparm_record_row%3D1%26sysparm_record_rows%3D2%26sysparm_record_list%3DnameSTARTSWITHGithubRepo%255Ename%2521%253DSNCAPICallWrapper%255EORDERBYname
+# ServiceNow Instance Links
 
-https://wso2sndev.service-now.com/now/nav/ui/classic/params/target/sys_properties.do%3Fsys_id%3D3e4d72511b7807100bb3da47b04bcb5b%26sysparm_record_target%3Dsys_properties%26sysparm_record_row%3D1%26sysparm_record_rows%3D1%26sysparm_record_list%3DnameSTARTSWITHgithub.dispatch%255EORDERBYname
+Replace the placeholders below with the actual URLs for your ServiceNow instance after setup. Keep this file private or gitignored if your instance URL is sensitive.
 
+---
+
+## Script Include
+
+```
+https://<your-instance>.service-now.com/now/nav/ui/classic/params/target/sys_script_include.do
+```
+
+Filter by name: `GitHubRepositoryDispatch`
+
+---
+
+## System Properties
+
+```
+https://<your-instance>.service-now.com/now/nav/ui/classic/params/target/sys_properties.do
+```
+
+Filter by name starting with: `github.dispatch`
+
+---
+
+## Scripted REST API
+
+```
+https://<your-instance>.service-now.com/now/nav/ui/classic/params/target/sys_ws_provider_list.do
+```
+
+Name: `GitHub Case Integration`
+
+---
+
+## Case table (for testing)
+
+```
+https://<your-instance>.service-now.com/now/nav/ui/classic/params/target/sn_customerservice_case_list.do
+```
+
+---
+
+## Change Request table (for testing)
+
+```
+https://<your-instance>.service-now.com/now/nav/ui/classic/params/target/change_request_list.do
+```
