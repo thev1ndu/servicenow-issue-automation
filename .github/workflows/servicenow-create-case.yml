@@ -187,6 +187,9 @@ jobs:
         if: steps.get_issue.outputs.should_process == 'true'
         run: |
           HTTP_CODE=$(curl -X POST -H "Content-Type: application/json" -H "User-Agent: GitHub-Actions-WSO2/1.0" -u "${{ secrets.SERVICENOW_USERNAME }}:${{ secrets.SERVICENOW_PASSWORD }}" -d @payload.json -w "%{http_code}" -o response.json -s "${{ secrets.SERVICENOW_URL }}")
+          echo "ServiceNow HTTP status: $HTTP_CODE"
+          echo "ServiceNow response body:"
+          cat response.json || echo "(no response body)"
           if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
             CASE_NUMBER=$(jq -r '.result.case_number // .case_number // empty' response.json)
             CASE_SYS_ID=$(jq -r '.result.sys_id // .result.case_sys_id // .case_sys_id // .sys_id // empty' response.json)
