@@ -1,6 +1,6 @@
 # Guide: ServiceNow Comment → GitHub (Flow Designer)
 
-When an agent adds an additional comment or work note to a ServiceNow case, this flow
+When an agent adds an additional comment to a ServiceNow case, this flow
 posts it as a comment on the linked GitHub issue.
 
 GitHub Actions file that receives it: `.github/workflows/sn-comment-to-github.yml`
@@ -11,8 +11,8 @@ GitHub event type sent: `servicenow-note`
 ## What happens end to end
 
 1. Agent types a comment in the ServiceNow case and clicks Post
-2. This Flow fires because the `comments` or `work_notes` field changed
-3. A Script step reads the latest journal entry and the linked GitHub issue number
+2. This Flow fires because the `Additional comments` field changed
+3. A Script step reads the latest comment and the linked GitHub issue number
 4. A REST call is made to the GitHub API (`repository_dispatch`) using the `dispatch` HTTP Method
 5. The `sn-comment-to-github.yml` GitHub Action picks it up and posts the comment on the issue
 
@@ -39,7 +39,7 @@ Click **New > Flow**
 
 Fill in:
 - **Name**: `SN Comment to GitHub`
-- **Description**: `Posts ServiceNow case comments and work notes to the linked GitHub issue`
+- **Description**: `Posts ServiceNow case additional comments to the linked GitHub issue`
 - **Run as**: `System User`
 
 Click **Submit**. The flow editor opens.
@@ -54,8 +54,6 @@ Click **Add a trigger** (the first block at the top of the canvas).
 2. **Table**: type and select `Customer Service Case [sn_customerservice_case]`
 3. Under **Condition**, click **Add Filters**:
    - Field: `Additional comments` | Operator: `changes`
-   - Click **OR**
-   - Field: `Work notes` | Operator: `changes`
 4. Leave **Run trigger** as: `For every update that causes condition to be true`
 
 Click **Done**.
@@ -85,7 +83,6 @@ For each variable:
 | `github_issue_number` | String | Trigger > Customer Service Case Record > **u_github_issue_number** |
 | `case_number` | String | Trigger > Customer Service Case Record > **Number** |
 | `comments_changed` | String | Trigger > Customer Service Case Record > **Additional comments** |
-| `work_notes_changed` | String | Trigger > Customer Service Case Record > **Work notes** |
 
 #### Write the Script
 
@@ -94,31 +91,18 @@ In the **Script** area, paste:
 ```javascript
 (function execute(inputs, outputs) {
 
-  var issueNumber = inputs.github_issue_number + '';
-  var caseNumber  = inputs.case_number + '';
-
-  var noteText = '';
-  var noteType = '';
-
-  var latestComment  = inputs.comments_changed + '';
-  var latestWorkNote = inputs.work_notes_changed + '';
-
-  if (latestComment && latestComment.length > 0) {
-    noteText = latestComment;
-    noteType = 'additional_comments';
-  } else if (latestWorkNote && latestWorkNote.length > 0) {
-    noteText = latestWorkNote;
-    noteType = 'work_notes';
-  }
+  var issueNumber  = inputs.github_issue_number + '';
+  var caseNumber   = inputs.case_number + '';
+  var commentText  = inputs.comments_changed + '';
 
   outputs.issue_number = issueNumber;
-  outputs.note_text    = noteText;
-  outputs.note_type    = noteType;
+  outputs.note_text    = commentText;
+  outputs.note_type    = 'additional_comments';
   outputs.case_number  = caseNumber;
   outputs.sn_user      = gs.getUserDisplayName();
 
-  // Only send if there is a GitHub issue linked AND there is actual note content
-  outputs.should_send = (issueNumber.length > 0 && noteText.length > 0) ? 'true' : 'false';
+  // Only send if the case has a GitHub issue linked AND a comment was actually posted
+  outputs.should_send = (issueNumber.length > 0 && commentText.length > 0) ? 'true' : 'false';
 
 })(inputs, outputs);
 ```
@@ -191,7 +175,7 @@ Map each from the previous Script step's outputs:
       return;
     }
 
-    var config = JSON.parse(configJson);
+    var config   = JSON.parse(configJson);
     var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
 
     // 'GitHub Integration' = REST Message name, 'dispatch' = HTTP Method name
@@ -234,7 +218,7 @@ Map each from the previous Script step's outputs:
 
 > `gs.getProperty('github.dispatch.config')` reads the system property and parses the JSON.
 > `rm.setEndpoint()` overrides the placeholder URL on the REST Message with the real owner/repo URL.
-> `rm.setRequestHeader('Authorization', ...)` injects the PAT token as a Bearer/token header.
+> `rm.setRequestHeader('Authorization', ...)` injects the PAT token as a bearer token header.
 > `rm.setRequestBody()` sets the JSON body directly — no `${placeholder}` substitutions needed.
 > GitHub returns HTTP `204` on a successful `repository_dispatch` call.
 
@@ -291,9 +275,9 @@ If the GitHub comment does not appear:
 
 | Problem | What to check |
 |---|---|
-| Flow does not trigger | Confirm the trigger condition has `Additional comments changes` OR `Work notes changes` |
+| Flow does not trigger | Confirm the trigger condition is `Additional comments changes` |
 | `should_send` is `false` | The case has no value in `u_github_issue_number` — fill that field on the case |
-| `http_status` is `401` | The Github Basic Auth profile has an expired or wrong PAT — update it in the profile record |
-| `http_status` is `404` | The org/repo in the REST Message Endpoint URL is wrong |
-| `http_status` is `422` | The `sn-comment-to-github.yml` workflow is not deployed to the default branch of that repo |
-| Comment is blank on GitHub | The data pill for `comments_changed` or `work_notes_changed` is mapped to the wrong field |
+| `http_status` is `401` | The token in `github.dispatch.config` is expired or wrong |
+| `http_status` is `404` | The owner or repo in `github.dispatch.config` is wrong |
+| `http_status` is `422` | The `sn-comment-to-github.yml` workflow is not deployed to the default branch |
+| Comment is blank on GitHub | The data pill for `comments_changed` is not mapped to the Additional comments field |
