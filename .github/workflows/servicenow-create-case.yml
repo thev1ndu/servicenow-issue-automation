@@ -167,6 +167,7 @@ jobs:
           CATALOG_PREFIX: ${{ steps.resolve.outputs.catalog_prefix }}
         run: |
           FORMATTED_DESCRIPTION=$(echo "$ALL_FIELDS" | jq -r '(to_entries | map("<strong>" + (.key | gsub("^u_";"") | gsub("_";" ") | ascii_upcase) + ":</strong><br/>" + (.value | gsub("\n";"<br/>")) + "<br/><br/>") | join("")) + "<br/><strong>─────────────────────────────────────</strong><br/>"')
+          FORMATTED_DESCRIPTION="${FORMATTED_DESCRIPTION}<strong>SOURCE:</strong> GitHub Issue #${ISSUE_NUMBER}<br/><strong>URL:</strong> ${ISSUE_URL}<br/><strong>Repository:</strong> ${{ github.repository }}<br/><strong>User:</strong> ${GITHUB_USER_LOGIN}<br/><strong>Labels:</strong> ${ISSUE_LABELS}<br/>"
           echo "$ALL_FIELDS" | jq \
             --arg project "${{ env.SERVICENOW_PROJECT }}" \
             --arg product "${{ env.SERVICENOW_PRODUCT }}" \
