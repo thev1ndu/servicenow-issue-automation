@@ -65,32 +65,28 @@ https://<your-instance>.service-now.com/api/<scope>/github_case/v1/case
     var rawTitle      = (body.title || '').replace(/^\[SR-Change\]:\s*/i, '').trim();
     var title         = body.u_short_description || rawTitle || 'GitHub Issue';
 
+    // HTML-formatted dump of all extracted issue fields + source footer
     var description       = body.description || '';
     var priority          = body.priority || '3 - Moderate';
-    var catalogItem       = body.catalog_item || 'General Requests';
-    var caseType          = body.case_type || 'Service Request';
-    var category          = body.category || '';
-    var channel           = body.channel || '';
-    var account           = body.account || '';
-    var announcementType  = body.announcement_type || '';
-    var project           = body.project || '';
-    var product           = body.product || '';
-    var wso2Product       = body.wso2_product || '';
-    var environment       = body.u_project_environment || '';
-    var githubUser        = body.github_user || '';
-    var labels            = body.labels || '';
+    var catalogItem       = body.catalog_item || '';
+    var caseType          = body.case_type || 'Service Request'; // u_case_type (reference)
+    var category          = body.category || '';                 // integer/choice — resolved via setDisplayValue
+    var account           = body.account || '';                  // reference — resolved via setDisplayValue
+    var announcementType  = body.announcement_type || '';        // u_announcement_type (choice)
+    var project           = body.project || '';                  // project (reference)
+    var product           = body.product || '';                  // product (reference)
+    var wso2Product       = body.wso2_product || '';             // u_wso2_product (reference)
+    var environment       = body.u_project_environment || '';    // glide_list
 
-    var affectedComp       = body.u_affected_component || '';
-    var affectedSvc        = body.u_affected_services || '';
-    var impact             = body.u_impact || '';
-    var impactDescOverall  = body.u_impact_description_overall || '';
-    var impactDescCustomer = body.u_impact_description_customer || '';
-    var implPlan           = body.u_implementation_plan || '';
-    var testPlan           = body.u_test_plan || '';
-    var monChecks          = body.u_monitoring_checks || '';
-    var maintWindow        = body.u_maintenance_window || '';
-    var serviceOutage      = body.u_service_outage || '';
-    var requestDetails     = body.u_request_details || '';
+    var affectedComp       = body.u_affected_component || '';       // string 4000
+    var affectedSvc        = body.u_affected_services || '';        // string 4000
+    var impact             = body.u_impact || '';                   // maps to standard impact integer
+    var impactDescOverall  = body.u_impact_description_overall || '';  // string 4000
+    var impactDescCustomer = body.u_impact_description_customer || ''; // string 4000
+    var implPlan           = body.u_implementation_plan || '';     // string 4000
+    var testPlan           = body.u_test_plan || '';               // string 4000
+    var serviceOutage      = body.u_service_outage || '';          // string 4000
+    var requestDetails     = body.u_request_details || '';         // string 1000
 
     if (!issueNumber) {
         response.setStatus(400);
@@ -132,38 +128,45 @@ https://<your-instance>.service-now.com/api/<scope>/github_case/v1/case
     var gr = new GlideRecord('sn_customerservice_case');
     gr.initialize();
 
+    // Standard task fields
     gr.short_description     = title;
-    gr.description           = description;
+    gr.description           = description;               // also stored in u_html_description below
     gr.priority              = snPriority;
-    if (snImpact) gr.impact  = snImpact;
+    if (snImpact) gr.impact  = snImpact;                 // integer: 1=High 2=Medium 3=Low
     gr.u_github_issue_number = issueNumber;
     gr.u_github_issue_url    = issueUrl;
 
-    // Constants from .github/servicenow-config.yml
-    if (category) gr.category = category;
-    if (channel)  gr.channel  = channel;
-    if (account && gr.isValidField('account')) gr.account.setDisplayValue(account);
-    if (announcementType && gr.isValidField('announcement_type')) gr.announcement_type = announcementType;
-    if (wso2Product && gr.isValidField('u_wso2_product')) gr.u_wso2_product = wso2Product;
+    // u_html_description (html, 5000 chars) — explicit HTML field for formatted display
+    if (gr.isValidField('u_html_description')) gr.u_html_description = description;
 
-    if (gr.isValidField('u_catalog_item'))                gr.u_catalog_item                = catalogItem;
-    if (gr.isValidField('u_case_type'))                   gr.u_case_type                   = caseType;
-    if (gr.isValidField('u_project'))                     gr.u_project                     = project;
-    if (gr.isValidField('u_product'))                     gr.u_product                     = product;
+    // --- Constants from .github/servicenow-config.yml ---
+
+    // category: integer type with choice list — setDisplayValue resolves "Issue" → integer
+    if (category) gr.category.setDisplayValue(category);
+
+    // Reference fields: setDisplayValue looks up the record by display name
+    if (account)      gr.account.setDisplayValue(account);
+    if (caseType   && gr.isValidField('u_case_type'))    gr.u_case_type.setDisplayValue(caseType);
+    if (project    && gr.isValidField('project'))        gr.project.setDisplayValue(project);
+    if (product    && gr.isValidField('product'))        gr.product.setDisplayValue(product);
+    if (wso2Product && gr.isValidField('u_wso2_product')) gr.u_wso2_product.setDisplayValue(wso2Product);
+
+    // u_announcement_type: choice field — direct string assignment
+    if (announcementType && gr.isValidField('u_announcement_type')) gr.u_announcement_type = announcementType;
+
+    // --- Issue-body fields ---
+
+    // u_project_environment: glide_list — pass comma-separated display values
     if (gr.isValidField('u_project_environment'))         gr.u_project_environment         = environment;
+    if (gr.isValidField('u_catalog_item'))                gr.u_catalog_item                = catalogItem;
     if (gr.isValidField('u_affected_component'))          gr.u_affected_component          = affectedComp;
     if (gr.isValidField('u_affected_services'))           gr.u_affected_services           = affectedSvc;
-    if (gr.isValidField('u_impact'))                      gr.u_impact                      = impact;
     if (gr.isValidField('u_impact_description_overall'))  gr.u_impact_description_overall  = impactDescOverall;
     if (gr.isValidField('u_impact_description_customer')) gr.u_impact_description_customer = impactDescCustomer;
     if (gr.isValidField('u_implementation_plan'))         gr.u_implementation_plan         = implPlan;
     if (gr.isValidField('u_test_plan'))                   gr.u_test_plan                   = testPlan;
-    if (gr.isValidField('u_monitoring_checks'))           gr.u_monitoring_checks           = monChecks;
-    if (gr.isValidField('u_maintenance_window'))          gr.u_maintenance_window          = maintWindow;
     if (gr.isValidField('u_service_outage'))              gr.u_service_outage              = serviceOutage;
     if (gr.isValidField('u_request_details'))             gr.u_request_details             = requestDetails;
-    if (gr.isValidField('u_github_user'))                 gr.u_github_user                 = githubUser;
-    if (gr.isValidField('u_labels'))                      gr.u_labels                      = labels;
 
     var sysId = gr.insert();
 

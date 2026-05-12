@@ -65,32 +65,28 @@ https://<your-instance>.service-now.com/api/<scope>/github_case/v1
     var rawTitle      = (body.title || '').replace(/^\[SR-Change\]:\s*/i, '').trim();
     var title         = body.u_short_description || rawTitle || 'GitHub Issue';
 
+    // HTML-formatted dump of all extracted issue fields + source footer
     var description       = body.description || '';
     var priority          = body.priority || '3 - Moderate';
-    var catalogItem       = body.catalog_item || 'General Requests';
-    var caseType          = body.case_type || 'Service Request';
-    var category          = body.category || '';
-    var channel           = body.channel || '';
-    var account           = body.account || '';
-    var announcementType  = body.announcement_type || '';
-    var project           = body.project || '';
-    var product           = body.product || '';
-    var wso2Product       = body.wso2_product || '';
-    var environment       = body.u_project_environment || '';
-    var githubUser        = body.github_user || '';
-    var labels            = body.labels || '';
+    var catalogItem       = body.catalog_item || '';
+    var caseType          = body.case_type || 'Service Request'; // u_case_type (reference)
+    var category          = body.category || '';                 // integer/choice — resolved via setDisplayValue
+    var account           = body.account || '';                  // reference — resolved via setDisplayValue
+    var announcementType  = body.announcement_type || '';        // u_announcement_type (choice)
+    var project           = body.project || '';                  // project (reference)
+    var product           = body.product || '';                  // product (reference)
+    var wso2Product       = body.wso2_product || '';             // u_wso2_product (reference)
+    var environment       = body.u_project_environment || '';    // glide_list
 
-    var affectedComp       = body.u_affected_component || '';
-    var affectedSvc        = body.u_affected_services || '';
-    var impact             = body.u_impact || '';
-    var impactDescOverall  = body.u_impact_description_overall || '';
-    var impactDescCustomer = body.u_impact_description_customer || '';
-    var implPlan           = body.u_implementation_plan || '';
-    var testPlan           = body.u_test_plan || '';
-    var monChecks          = body.u_monitoring_checks || '';
-    var maintWindow        = body.u_maintenance_window || '';
-    var serviceOutage      = body.u_service_outage || '';
-    var requestDetails     = body.u_request_details || '';
+    var affectedComp       = body.u_affected_component || '';       // string 4000
+    var affectedSvc        = body.u_affected_services || '';        // string 4000
+    var impact             = body.u_impact || '';                   // maps to standard impact integer
+    var impactDescOverall  = body.u_impact_description_overall || '';  // string 4000
+    var impactDescCustomer = body.u_impact_description_customer || ''; // string 4000
+    var implPlan           = body.u_implementation_plan || '';     // string 4000
+    var testPlan           = body.u_test_plan || '';               // string 4000
+    var serviceOutage      = body.u_service_outage || '';          // string 4000
+    var requestDetails     = body.u_request_details || '';         // string 1000
 
     if (!issueNumber) {
         response.setStatus(400);
@@ -132,38 +128,45 @@ https://<your-instance>.service-now.com/api/<scope>/github_case/v1
     var gr = new GlideRecord('sn_customerservice_case');
     gr.initialize();
 
+    // Standard task fields
     gr.short_description     = title;
-    gr.description           = description;
+    gr.description           = description;               // also stored in u_html_description below
     gr.priority              = snPriority;
-    if (snImpact) gr.impact  = snImpact;
+    if (snImpact) gr.impact  = snImpact;                 // integer: 1=High 2=Medium 3=Low
     gr.u_github_issue_number = issueNumber;
     gr.u_github_issue_url    = issueUrl;
 
-    // Constants from .github/servicenow-config.yml
-    if (category) gr.category = category;
-    if (channel)  gr.channel  = channel;
-    if (account && gr.isValidField('account')) gr.account.setDisplayValue(account);
-    if (announcementType && gr.isValidField('announcement_type')) gr.announcement_type = announcementType;
-    if (wso2Product && gr.isValidField('u_wso2_product')) gr.u_wso2_product = wso2Product;
+    // u_html_description (html, 5000 chars) — explicit HTML field for formatted display
+    if (gr.isValidField('u_html_description')) gr.u_html_description = description;
 
-    if (gr.isValidField('u_catalog_item'))                gr.u_catalog_item                = catalogItem;
-    if (gr.isValidField('u_case_type'))                   gr.u_case_type                   = caseType;
-    if (gr.isValidField('u_project'))                     gr.u_project                     = project;
-    if (gr.isValidField('u_product'))                     gr.u_product                     = product;
+    // --- Constants from .github/servicenow-config.yml ---
+
+    // category: integer type with choice list — setDisplayValue resolves "Issue" → integer
+    if (category) gr.category.setDisplayValue(category);
+
+    // Reference fields: setDisplayValue looks up the record by display name
+    if (account)      gr.account.setDisplayValue(account);
+    if (caseType   && gr.isValidField('u_case_type'))    gr.u_case_type.setDisplayValue(caseType);
+    if (project    && gr.isValidField('project'))        gr.project.setDisplayValue(project);
+    if (product    && gr.isValidField('product'))        gr.product.setDisplayValue(product);
+    if (wso2Product && gr.isValidField('u_wso2_product')) gr.u_wso2_product.setDisplayValue(wso2Product);
+
+    // u_announcement_type: choice field — direct string assignment
+    if (announcementType && gr.isValidField('u_announcement_type')) gr.u_announcement_type = announcementType;
+
+    // --- Issue-body fields ---
+
+    // u_project_environment: glide_list — pass comma-separated display values
     if (gr.isValidField('u_project_environment'))         gr.u_project_environment         = environment;
+    if (gr.isValidField('u_catalog_item'))                gr.u_catalog_item                = catalogItem;
     if (gr.isValidField('u_affected_component'))          gr.u_affected_component          = affectedComp;
     if (gr.isValidField('u_affected_services'))           gr.u_affected_services           = affectedSvc;
-    if (gr.isValidField('u_impact'))                      gr.u_impact                      = impact;
     if (gr.isValidField('u_impact_description_overall'))  gr.u_impact_description_overall  = impactDescOverall;
     if (gr.isValidField('u_impact_description_customer')) gr.u_impact_description_customer = impactDescCustomer;
     if (gr.isValidField('u_implementation_plan'))         gr.u_implementation_plan         = implPlan;
     if (gr.isValidField('u_test_plan'))                   gr.u_test_plan                   = testPlan;
-    if (gr.isValidField('u_monitoring_checks'))           gr.u_monitoring_checks           = monChecks;
-    if (gr.isValidField('u_maintenance_window'))          gr.u_maintenance_window          = maintWindow;
     if (gr.isValidField('u_service_outage'))              gr.u_service_outage              = serviceOutage;
     if (gr.isValidField('u_request_details'))             gr.u_request_details             = requestDetails;
-    if (gr.isValidField('u_github_user'))                 gr.u_github_user                 = githubUser;
-    if (gr.isValidField('u_labels'))                      gr.u_labels                      = labels;
 
     var sysId = gr.insert();
 
@@ -205,20 +208,35 @@ The `<scope>` part is shown in the API's **API ID** field as a namespaced path (
 
 This table shows what the GitHub workflow sends and how each key maps to a Case field:
 
-| Payload key | ServiceNow field | Source |
-|-------------|-----------------|--------|
-| `u_short_description` | `short_description` | `### Short Description` section in issue body |
-| `title` | `short_description` (fallback) | GitHub issue title, `[SR-Change]:` prefix stripped |
-| `description` | `description` | HTML-formatted dump of all extracted issue fields + source footer |
-| `priority` | `priority` | Issue body; mapped Critical→1, High→2, Moderate→3, Low→4 |
-| `u_impact` | `impact` (integer) + `u_impact` | Issue body; mapped High→1, Medium→2, Low→3 |
-| `category` | `category` | **`servicenow-config.yml`** → `case.category` |
-| `channel` | `channel` | **`servicenow-config.yml`** → `case.channel` |
-| `account` | `account` (reference, by display name) | **`servicenow-config.yml`** → `case.account` |
-| `announcement_type` | `announcement_type` | **`servicenow-config.yml`** → `case.announcement_type` |
-| `project` | `u_project` | **`servicenow-config.yml`** → `project.name` |
-| `product` | `u_product` | **`servicenow-config.yml`** → `project.product` |
-| `wso2_product` | `u_wso2_product` | **`servicenow-config.yml`** → `project.wso2_product` |
+| Payload key | SN field | SN type | How set | Source |
+|-------------|----------|---------|---------|--------|
+| `u_short_description` | `short_description` | string 160 | direct | `### Short Description` in issue body |
+| `title` | `short_description` (fallback) | string 160 | direct | GitHub issue title, `[SR-Change]:` stripped |
+| `description` | `description` + `u_html_description` | string / html 5000 | direct | HTML dump of all issue fields + source footer |
+| `priority` | `priority` | integer | mapped | Critical→1, High→2, Moderate→3, Low→4 |
+| `u_impact` | `impact` | integer | mapped | High→1, Medium→2, Low→3 |
+| `category` | `category` | **integer** | `setDisplayValue` | **`servicenow-config.yml`** → `case.category` |
+| `account` | `account` | **reference** | `setDisplayValue` | **`servicenow-config.yml`** → `case.account` |
+| `case_type` | `u_case_type` | **reference** | `setDisplayValue` | **`servicenow-config.yml`** → `case.case_type` |
+| `announcement_type` | `u_announcement_type` | choice | direct | **`servicenow-config.yml`** → `case.announcement_type` |
+| `project` | `project` | **reference** | `setDisplayValue` | **`servicenow-config.yml`** → `project.name` |
+| `product` | `product` | **reference** | `setDisplayValue` | **`servicenow-config.yml`** → `project.product` |
+| `wso2_product` | `u_wso2_product` | **reference** | `setDisplayValue` | **`servicenow-config.yml`** → `project.wso2_product` |
+| `u_impact_description_overall` | `u_impact_description_overall` | string 4000 | direct | `### Impact Description (Overall)` |
+| `u_impact_description_customer` | `u_impact_description_customer` | string 4000 | direct | `### Impact Description (Customer)` |
+| `u_project_environment` | `u_project_environment` | glide_list | direct | `### Environment Details` (comma-separated) |
+| `u_affected_component` | `u_affected_component` | string 4000 | direct | `### Affected Component` |
+| `u_affected_services` | `u_affected_services` | string 4000 | direct | `### Affected Services` |
+| `u_service_outage` | `u_service_outage` | string 4000 | direct | `### Service Outage/Downtime` |
+| `u_implementation_plan` | `u_implementation_plan` | string 4000 | direct | `### Implementation Plan` |
+| `u_test_plan` | `u_test_plan` | string 4000 | direct | `### Test Plan` |
+| `u_request_details` | `u_request_details` | string 1000 | direct | `### Request Details` |
+| `issue_number` | `u_github_issue_number` | string 20 | direct | GitHub issue number (idempotency key) |
+| `issue_url` | `u_github_issue_url` | url 255 | direct | GitHub issue URL |
+
+> **`setDisplayValue` note:** For reference fields, ServiceNow looks up the referenced record by its display name at insert time. If the name doesn't exactly match a record in the target table, the field will be left blank — no error is thrown. Verify the display name in `servicenow-config.yml` matches exactly what appears in ServiceNow.
+
+> **`u_monitoring_checks` and `u_maintenance_window`:** These fields do not exist on `sn_customerservice_case`. Their content is included in the HTML description instead.
 | `u_impact_description_overall` | `u_impact_description_overall` | If field exists on table |
 | `u_impact_description_customer` | `u_impact_description_customer` | If field exists on table |
 | `u_project_environment` | `u_project_environment` | If field exists on table |

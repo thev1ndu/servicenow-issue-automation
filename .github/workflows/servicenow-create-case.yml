@@ -60,7 +60,6 @@ jobs:
           project_cfg = cfg.get('project', {})
           out = open(os.environ['GITHUB_OUTPUT'], 'a')
           out.write('category='         + case_cfg.get('category', '')         + '\n')
-          out.write('channel='          + case_cfg.get('channel', '')          + '\n')
           out.write('account='          + case_cfg.get('account', '')          + '\n')
           out.write('announcement_type='+ case_cfg.get('announcement_type','') + '\n')
           out.write('project_name='     + project_cfg.get('name', '')          + '\n')
@@ -187,7 +186,6 @@ jobs:
           SN_PROJECT: ${{ steps.load_config.outputs.project_name }}
           SN_PRODUCT: ${{ steps.load_config.outputs.product }}
           SN_CATEGORY: ${{ steps.load_config.outputs.category }}
-          SN_CHANNEL: ${{ steps.load_config.outputs.channel }}
           SN_ACCOUNT: ${{ steps.load_config.outputs.account }}
           SN_ANNOUNCEMENT_TYPE: ${{ steps.load_config.outputs.announcement_type }}
           SN_WSO2_PRODUCT: ${{ steps.load_config.outputs.wso2_product }}
@@ -198,7 +196,6 @@ jobs:
             --arg project           "$SN_PROJECT" \
             --arg product           "$SN_PRODUCT" \
             --arg category          "$SN_CATEGORY" \
-            --arg channel           "$SN_CHANNEL" \
             --arg account           "$SN_ACCOUNT" \
             --arg announcement_type "$SN_ANNOUNCEMENT_TYPE" \
             --arg wso2_product      "$SN_WSO2_PRODUCT" \
@@ -213,7 +210,7 @@ jobs:
             --arg catalog_item "$CATALOG_ITEM" \
             --arg case_type "$CASE_TYPE" \
             --arg catalog_prefix "$CATALOG_PREFIX" \
-            '. + {project: $project, product: $product, category: $category, channel: $channel, account: $account, announcement_type: $announcement_type, wso2_product: $wso2_product, title: $title, issue_number: $issue_number, issue_url: $issue_url, u_github_issue_url: $u_github_issue_url, github_user: $github_user, repository_full_name: $repository_full_name, labels: $labels, description: $description, catalog_item: $catalog_item, case_type: $case_type, catalog_prefix: $catalog_prefix}' > payload.json
+            '. + {project: $project, product: $product, category: $category, account: $account, announcement_type: $announcement_type, wso2_product: $wso2_product, title: $title, issue_number: $issue_number, issue_url: $issue_url, u_github_issue_url: $u_github_issue_url, github_user: $github_user, repository_full_name: $repository_full_name, labels: $labels, description: $description, catalog_item: $catalog_item, case_type: $case_type, catalog_prefix: $catalog_prefix}' > payload.json
 
       - id: send_servicenow
         if: steps.get_issue.outputs.should_process == 'true'

@@ -3,11 +3,10 @@
 # The workflow reads this file automatically; no secrets or Actions variables needed.
 
 case:
-  category: "Issue"                                   # Case Category dropdown
-  channel: "Web"                                      # Channel dropdown
-  account: "Customer Portal Customer Account1"        # Account reference field (display name)
-  case_type: "Service Request"                        # Case Type dropdown
-  announcement_type: "General"                        # Announcement Type dropdown
+  category: "Issue"                                   # Category (integer/choice) — display value e.g. "Issue"
+  account: "Customer Portal Customer Account1"        # Account reference field — exact display name from SN
+  case_type: "Service Request"                        # Case Type reference field — exact display name from SN
+  announcement_type: "General"                        # Announcement Type choice — exact value from SN dropdown
 
 project:
   name: "Customer Portal Customer Project1 - Subscription"   # Project reference field
