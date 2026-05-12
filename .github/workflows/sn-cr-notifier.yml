@@ -1,0 +1,77 @@
+name: ServiceNow CR → GitHub
+
+on:
+  repository_dispatch:
+    types: [servicenow-cr-update]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  cr-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v8
+        env:
+          SERVICENOW_URL: ${{ secrets.SERVICENOW_URL }}
+          SERVICENOW_UI_URL: ${{ secrets.SERVICENOW_UI_URL }}
+          SERVICENOW_USERNAME: ${{ secrets.SERVICENOW_USERNAME }}
+          SERVICENOW_PASSWORD: ${{ secrets.SERVICENOW_PASSWORD }}
+        with:
+          script: |
+            const p = context.payload.client_payload || {};
+            core.info('servicenow-cr-update payload: ' + JSON.stringify(p));
+            const issueNumber = p.github_issue_number;
+            const crNumber = p.cr_number;
+            const crSysId = p.cr_sys_id;
+            const crState = p.cr_state;
+            const crEnvironment = p.cr_environment || 'Not specified';
+            const caseSysId = p.case_sys_id || '';
+            const action = p.action;
+            const previousState = p.previous_state || '';
+            const servicenowUiUrl = process.env.SERVICENOW_UI_URL;
+            const crUrl = crSysId ? `${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${crSysId}` : `#`;
+            if (!issueNumber || !crNumber || !action) {
+              core.warning('Missing github_issue_number, cr_number, or action — skipping');
+              return;
+            }
+            if (action !== 'created' && action !== 'state_changed') {
+              core.warning('Unknown action: ' + action);
+              return;
+            }
+            async function fetchAllCRs(parentSysId) {
+              if (!parentSysId) return [];
+              const snUrl = process.env.SERVICENOW_UI_URL || process.env.SERVICENOW_URL.replace(/\/api\/.*/, '');
+              const auth = Buffer.from(`${process.env.SERVICENOW_USERNAME}:${process.env.SERVICENOW_PASSWORD}`).toString('base64');
+              const queryUrl = `${snUrl}/api/now/table/task?sysparm_query=parent=${parentSysId}^sys_class_name=change_request&sysparm_fields=number,state,sys_id&sysparm_display_value=true&sysparm_limit=50`;
+              const res = await fetch(queryUrl, { headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' } });
+              if (!res.ok) {
+                core.warning('ServiceNow CR query failed: HTTP ' + res.status);
+                return [];
+              }
+              const data = await res.json();
+              return data.result || [];
+            }
+            const metaLine = (p.is_first_cr !== undefined || p.total_crs !== undefined)
+              ? `\n_CR index: ${p.is_first_cr === undefined ? '—' : p.is_first_cr}, total: ${p.total_crs ?? '—'}_\n`
+              : '';
+            if (action === 'created') {
+              let allCRs = await fetchAllCRs(caseSysId);
+              if (allCRs.length === 0) {
+                allCRs = [{ number: crNumber, sys_id: crSysId, state: crState }];
+              }
+              const crListMarkdown = allCRs.map(cr =>
+                `- [${cr.number}](${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${cr.sys_id}) - ${cr.state || 'Unknown'}`
+              ).join('\n');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
+                body: `New Change Request Created\n\n**CR Number:** [${crNumber}](${crUrl})\n**State:** ${crState}\n**Environment:** ${crEnvironment}${metaLine}\nAll Change Requests for this Case (${allCRs.length})\n${crListMarkdown}\n\n---\n*Automatically notified by ServiceNow*`
+              });
+            } else if (action === 'state_changed') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
+                body: `Change Request State Updated\n\n**CR Number:** [${crNumber}](${crUrl})\n**State Change:** ${previousState} → **${crState}**${metaLine}\n\n---\n*Automatically notified by ServiceNow*`
+              });
+            }

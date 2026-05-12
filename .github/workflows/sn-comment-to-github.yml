@@ -1,0 +1,34 @@
+name: ServiceNow Comment → GitHub
+
+on:
+  repository_dispatch:
+    types: [servicenow-note]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  post-comment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const p = context.payload.client_payload || {};
+            const issueNumber = parseInt(p.issue_number, 10);
+            const noteText = p.note_text || '';
+            const noteType = p.note_type || 'additional_comments';
+            const caseNumber = p.case_number || '';
+            const snUser = p.sn_user || 'ServiceNow Agent';
+            if (!issueNumber || !noteText) {
+              core.warning('Missing issue_number or note_text — skipping');
+              return;
+            }
+            const label = noteType === 'work_notes' ? '📋 ServiceNow Work Note' : '💬 ServiceNow Comment';
+            const caseRef = caseNumber ? ` — Case ${caseNumber}` : '';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
+              body: `${label}${caseRef}\n\n${noteText}\n\n---\n*Posted by ${snUser} via ServiceNow*`
+            });
