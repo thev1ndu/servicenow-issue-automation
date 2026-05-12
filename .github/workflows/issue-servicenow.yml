@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.c.outputs.should_run }}
+      should_update: ${{ steps.c.outputs.should_update }}
       issue_number: ${{ steps.c.outputs.issue_number }}
       label_name: ${{ steps.c.outputs.label_name }}
     steps:
@@ -40,18 +41,22 @@ jobs:
               ((action === 'opened' || action === 'edited') && (hasMarker || (issue.title || '').startsWith('[SR-Change]:')));
 
             if (!shouldConsider) {
-              core.setOutput('should_run', 'false');
-              core.setOutput('issue_number', String(issue.number));
-              core.setOutput('label_name', labelName);
+              core.setOutput('should_run',    'false');
+              core.setOutput('should_update', 'false');
+              core.setOutput('issue_number',  String(issue.number));
+              core.setOutput('label_name',    labelName);
               return;
             }
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number
             });
             const caseDone = comments.some(c => c.user.type === 'Bot' && c.body.includes('ServiceNow Case Created Successfully'));
-            core.setOutput('should_run', caseDone ? 'false' : 'true');
-            core.setOutput('issue_number', String(issue.number));
-            core.setOutput('label_name', labelName);
+            // If case already exists and this is an edit → update path; otherwise normal create path
+            const isEdit = (action === 'edited');
+            core.setOutput('should_run',    String(!caseDone));
+            core.setOutput('should_update', String(caseDone && isEdit));
+            core.setOutput('issue_number',  String(issue.number));
+            core.setOutput('label_name',    labelName);
 
   validate:
     needs: gate
@@ -224,6 +229,14 @@ jobs:
       case_type: ${{ needs.validate.outputs.case_type }}
       sr_type: ${{ needs.validate.outputs.sr_type }}
       catalog_prefix: ${{ needs.validate.outputs.catalog_prefix }}
+
+  update-case:
+    needs: gate
+    if: needs.gate.outputs.should_update == 'true'
+    uses: ./.github/workflows/servicenow-update-case.yml
+    secrets: inherit
+    with:
+      issue_number: ${{ needs.gate.outputs.issue_number }}
 
   cr-watch:
     needs: [gate, validate, create-case]

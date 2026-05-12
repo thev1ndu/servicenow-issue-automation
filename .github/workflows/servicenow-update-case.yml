@@ -1,0 +1,160 @@
+name: ServiceNow · update case
+on:
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: string
+    outputs:
+      sn_success:
+        value: ${{ jobs.update.outputs.sn_success }}
+
+concurrency:
+  group: servicenow-issue-${{ inputs.issue_number || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      sn_success: ${{ steps.patch_servicenow.outputs.sn_success }}
+    steps:
+      - id: get_issue
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issueNumber = parseInt('${{ inputs.issue_number }}', 10);
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber
+            });
+            core.setOutput('issue_body',   issue.body || '');
+            core.setOutput('issue_title',  issue.title || '');
+            core.setOutput('issue_url',    issue.html_url || '');
+            core.setOutput('github_user',  issue.user.login || '');
+            core.setOutput('labels',       issue.labels.map(l => l.name).join(', '));
+
+      - id: extract_fields
+        uses: actions/github-script@v8
+        env:
+          ISSUE_BODY: ${{ steps.get_issue.outputs.issue_body }}
+        with:
+          script: |
+            const body = process.env.ISSUE_BODY;
+            function extractAllFields(body) {
+              const fields = {};
+              const regex = /###\s+([^\n]+)\s*\n+([^\n][\s\S]*?)(?=\n+###|\n*$)/g;
+              const knownFields = {
+                'short description':                       'u_short_description',
+                'description':                             'description',
+                'priority':                                'priority',
+                'impact':                                  'u_impact',
+                'impact description (overall)':            'u_impact_description_overall',
+                'impact description (customer)':           'u_impact_description_customer',
+                'environment details':                     'u_project_environment',
+                'affected component':                      'u_affected_component',
+                'affected services':                       'u_affected_services',
+                'service outage/downtime':                 'u_service_outage',
+                'is a maintenance window required or not': 'u_maintenance_window_note',
+                'implementation plan':                     'u_implementation_plan',
+                'test plan':                               'u_test_plan',
+                'monitoring checks':                       'u_monitoring_checks_note',
+                'request details':                         'u_request_details'
+              };
+              let match;
+              while ((match = regex.exec(body)) !== null) {
+                const label = match[1].trim();
+                const value = match[2].trim();
+                if (!value || value === '_No response_' || value === 'No response') continue;
+                const normalized = label.toLowerCase();
+                const fieldId = knownFields[normalized] ?? ('u_' + label.replace(/[^\w\s-]/g, '').trim().toLowerCase().replace(/\s+/g, '_'));
+                fields[fieldId] = value;
+              }
+              return fields;
+            }
+            const allFields = extractAllFields(body);
+            const priorityMap = { Critical: '1 - Critical', High: '2 - High', Moderate: '3 - Moderate', Low: '4 - Low' };
+            const rawPriority = allFields.priority || 'Moderate';
+            allFields.priority = priorityMap[rawPriority] || '3 - Moderate';
+            if (allFields.u_project_environment) {
+              allFields.u_project_environment = allFields.u_project_environment.split(',').map(e => e.trim()).filter(Boolean).join(', ');
+            }
+            core.setOutput('all_fields', JSON.stringify(allFields));
+
+      - id: build_payload
+        env:
+          ALL_FIELDS:        ${{ steps.extract_fields.outputs.all_fields }}
+          ISSUE_TITLE:       ${{ steps.get_issue.outputs.issue_title }}
+          ISSUE_NUMBER:      ${{ inputs.issue_number }}
+          ISSUE_URL:         ${{ steps.get_issue.outputs.issue_url }}
+          GITHUB_USER_LOGIN: ${{ steps.get_issue.outputs.github_user }}
+          ISSUE_LABELS:      ${{ steps.get_issue.outputs.labels }}
+        run: |
+          FORMATTED_DESCRIPTION=$(echo "$ALL_FIELDS" | jq -r '(to_entries | map("<strong>" + (.key | gsub("^u_";"") | gsub("_";" ") | ascii_upcase) + ":</strong><br/>" + (.value | gsub("\n";"<br/>")) + "<br/><br/>") | join("")) + "<br/><strong>─────────────────────────────────────</strong><br/>"')
+          FORMATTED_DESCRIPTION="${FORMATTED_DESCRIPTION}<strong>SOURCE:</strong> GitHub Issue #${ISSUE_NUMBER}<br/><strong>URL:</strong> ${ISSUE_URL}<br/><strong>Repository:</strong> ${{ github.repository }}<br/><strong>User:</strong> ${GITHUB_USER_LOGIN}<br/><strong>Labels:</strong> ${ISSUE_LABELS}<br/>"
+          echo "$ALL_FIELDS" | jq \
+            --arg title        "$ISSUE_TITLE" \
+            --arg issue_number "$ISSUE_NUMBER" \
+            --arg issue_url    "$ISSUE_URL" \
+            --arg github_user  "$GITHUB_USER_LOGIN" \
+            --arg description  "$FORMATTED_DESCRIPTION" \
+            '. + {title: $title, issue_number: $issue_number, issue_url: $issue_url, github_user: $github_user, description: $description}' \
+            > update_payload.json
+
+      - id: patch_servicenow
+        run: |
+          HTTP_CODE=$(curl -X PATCH \
+            -H "Content-Type: application/json" \
+            -H "User-Agent: GitHub-Actions-WSO2/1.0" \
+            -u "${{ secrets.SERVICENOW_USERNAME }}:${{ secrets.SERVICENOW_PASSWORD }}" \
+            -d @update_payload.json \
+            -w "%{http_code}" -o update_response.json -s \
+            "${{ secrets.SERVICENOW_URL }}")
+          echo "ServiceNow PATCH status: $HTTP_CODE"
+          echo "Response body:"
+          cat update_response.json || echo "(no response body)"
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "sn_success=true" >> $GITHUB_OUTPUT
+          else
+            echo "sn_success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - if: success()
+        uses: actions/github-script@v8
+        env:
+          SERVICENOW_UI_URL: ${{ secrets.SERVICENOW_UI_URL }}
+        with:
+          script: |
+            const fs = require('fs');
+            const issueNum = parseInt('${{ inputs.issue_number }}');
+            let response = {};
+            try { response = JSON.parse(fs.readFileSync('update_response.json', 'utf8')); } catch (_) {}
+            const changesCount = response.changes || 0;
+            const caseNumber   = response.case_number || '';
+            const caseSysId    = response.sys_id || '';
+            const snUiUrl      = process.env.SERVICENOW_UI_URL || '';
+            const caseUrl      = caseSysId && snUiUrl
+              ? `${snUiUrl}/now/nav/ui/classic/params/target/sn_customerservice_case.do?sys_id=${caseSysId}&sysparm_view=wso2_cs_generic`
+              : null;
+            const caseDisplay  = caseUrl ? `[${caseNumber}](${caseUrl})` : `\`${caseNumber}\``;
+            const body = changesCount > 0
+              ? `## 🔄 ServiceNow Case Updated\n\n**Case:** ${caseDisplay} — **${changesCount} field(s) updated.**\n\n---\n*Automated via GitHub Actions*`
+              : `## ℹ️ No Field Changes Detected\n\n**Case:** ${caseDisplay} — issue was edited but the tracked fields have not changed.\n\n---\n*Automated via GitHub Actions*`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNum, body
+            });
+
+      - if: failure()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: parseInt('${{ inputs.issue_number }}', 10),
+              body: `## ❌ ServiceNow Case Update Failed\n\n[View workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n---\n*Contact support if the issue persists.*`
+            });

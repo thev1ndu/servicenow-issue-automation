@@ -192,7 +192,140 @@ https://<your-instance>.service-now.com/api/<scope>/github_case/v1/case
 
 ---
 
-## 3. Script Include — `GitHubRepositoryDispatch`
+## 3. Scripted REST API — PATCH `/case` resource (update existing case)
+
+When a GitHub issue is edited, the workflow sends `PATCH` to the same URL as the POST endpoint. Add this as a second resource inside the same `GitHub Case Integration` API.
+
+**Resource:**
+- **Name:** `Update Case`
+- **HTTP Method:** `PATCH`
+- **Relative path:** `/case`
+
+**Resource script:**
+
+```javascript
+(function process(/*RESTAPIRequest*/ request, /*RESTAPIResponse*/ response) {
+
+    var body        = request.body.data;
+    var issueNumber = body.issue_number || '';
+    var githubUser  = body.github_user  || 'GitHub';
+
+    if (!issueNumber) {
+        response.setStatus(400);
+        response.setBody({ error: 'issue_number is required' });
+        return;
+    }
+
+    var gr = new GlideRecord('sn_customerservice_case');
+    gr.addQuery('u_github_issue_number', issueNumber);
+    gr.query();
+    if (!gr.next()) {
+        response.setStatus(404);
+        response.setBody({ error: 'No case found for issue ' + issueNumber });
+        return;
+    }
+
+    var changes = [];
+
+    // Track a plain string/text field change and update it
+    function updateStr(label, fieldName, newValue) {
+        if (!newValue || !gr.isValidField(fieldName)) return;
+        var oldVal = (gr.getValue(fieldName) || '').trim();
+        var newVal = (newValue + '').trim();
+        if (oldVal === newVal) return;
+        var clip = function(s) { return s.length > 80 ? s.substring(0, 80) + '…' : s; };
+        changes.push(label + ' was updated from "' + clip(oldVal) + '" to "' + clip(newVal) + '" by ' + githubUser);
+        gr.setValue(fieldName, newVal);
+    }
+
+    // --- Priority (integer field) ---
+    var priorityMap = {
+        '1 - Critical': 1, 'Critical': 1,
+        '2 - High': 2,     'High': 2,
+        '3 - Moderate': 3, 'Moderate': 3, 'Medium': 3,
+        '4 - Low': 4,      'Low': 4
+    };
+    var newPriorityRaw = body.priority || '';
+    if (newPriorityRaw) {
+        var newPriority = priorityMap[newPriorityRaw] || 3;
+        var oldPriority = parseInt(gr.getValue('priority') || '3', 10);
+        if (oldPriority !== newPriority) {
+            changes.push('Priority was updated from ' + gr.priority.getDisplayValue() + ' to ' + newPriorityRaw + ' by ' + githubUser);
+            gr.priority = newPriority;
+        }
+    }
+
+    // --- Impact (integer field) ---
+    var impactMap = {
+        'High': 1, '1 - High': 1, 'Critical': 1, '1 - Critical': 1,
+        'Medium': 2, '2 - Medium': 2, 'Moderate': 2,
+        'Low': 3, '3 - Low': 3, '4 - Low': 3
+    };
+    var newImpactRaw = body.u_impact || '';
+    if (newImpactRaw) {
+        var newImpact = impactMap[newImpactRaw] || 2;
+        var oldImpact = parseInt(gr.getValue('impact') || '0', 10);
+        if (oldImpact !== newImpact) {
+            changes.push('Impact was updated from ' + gr.impact.getDisplayValue() + ' to ' + newImpactRaw + ' by ' + githubUser);
+            gr.impact = newImpact;
+        }
+    }
+
+    // --- Short Description ---
+    var rawTitle     = (body.title || '').replace(/^\[SR-Change\]:\s*/i, '').trim();
+    var newShortDesc = (body.u_short_description || rawTitle || '').trim();
+    if (newShortDesc) {
+        var oldShortDesc = (gr.getValue('short_description') || '').trim();
+        if (oldShortDesc !== newShortDesc) {
+            changes.push('Short Description was updated from "' + oldShortDesc + '" to "' + newShortDesc + '" by ' + githubUser);
+            gr.short_description = newShortDesc;
+        }
+    }
+
+    // --- String / text fields ---
+    updateStr('Impact Description (Overall)', 'u_impact_description_overall',  body.u_impact_description_overall);
+    updateStr('Impact Description (Customer)','u_impact_description_customer', body.u_impact_description_customer);
+    updateStr('Environment',                  'u_project_environment',         body.u_project_environment);
+    updateStr('Affected Component',           'u_affected_component',          body.u_affected_component);
+    updateStr('Affected Services',            'u_affected_services',           body.u_affected_services);
+    updateStr('Service Outage',               'u_service_outage',              body.u_service_outage);
+    updateStr('Implementation Plan',          'u_implementation_plan',         body.u_implementation_plan);
+    updateStr('Test Plan',                    'u_test_plan',                   body.u_test_plan);
+    updateStr('Request Details',              'u_request_details',             body.u_request_details);
+
+    // Always refresh the HTML description (it's a regenerated dump of all fields)
+    var newDesc = body.description || '';
+    if (newDesc) {
+        gr.description = newDesc;
+        if (gr.isValidField('u_html_description')) gr.u_html_description = newDesc;
+    }
+
+    // Add work note only when tracked fields actually changed
+    if (changes.length > 0) {
+        gr.work_notes = 'GitHub Integration\n' + changes.join('\n');
+    }
+
+    gr.update();
+    gs.info('GitHubCaseUpdate: case ' + gr.number + ' — ' + changes.length + ' change(s) for issue #' + issueNumber);
+
+    response.setStatus(200);
+    response.setBody({
+        case_number:  gr.number.toString(),
+        sys_id:       gr.sys_id.toString(),
+        case_sys_id:  gr.sys_id.toString(),
+        changes:      changes.length,
+        change_log:   changes,
+        message:      changes.length > 0
+            ? 'Case updated with ' + changes.length + ' change(s)'
+            : 'No field changes detected; description refreshed'
+    });
+
+})(request, response);
+```
+
+---
+
+## 4. Script Include — `GitHubRepositoryDispatch`
 
 Used by Business Rules and Flows to send outbound calls to GitHub's `repository_dispatch` API.
 
