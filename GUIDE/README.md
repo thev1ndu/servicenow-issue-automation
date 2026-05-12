@@ -1,13 +1,25 @@
-## ServiceNow implementation guide
+# ServiceNow Setup Guide
 
-This folder contains the **ServiceNow-only** setup steps for the GitHub ↔ ServiceNow integration in this repo.
+Complete click-by-click instructions for configuring the ServiceNow side of the GitHub ↔ ServiceNow integration.
 
-- **Step 1**: Configure `github.dispatch.config` and create the Script Include that calls GitHub `repository_dispatch`
-- **Step 2**: Flow Designer — dispatch when a Change Request is created
-- **Step 3**: Flow Designer — dispatch when a Change Request state changes
-- **Step 4**: Test + troubleshoot
+## What you are setting up
 
-Start here:
+| Direction | What | How |
+|-----------|------|-----|
+| GitHub → ServiceNow | Create a Case from a GitHub issue | Scripted REST API (inbound POST /case) |
+| ServiceNow → GitHub | Notify GitHub when a CR is created or changes state | Script Include + Business Rules |
 
-- `GUIDE/step1.md`
+## Steps
 
+| File | What it covers |
+|------|---------------|
+| [step1.md](step1.md) | Prerequisites: custom columns, system property |
+| [step2.md](step2.md) | Scripted REST API — inbound Case creation endpoint |
+| [step3.md](step3.md) | Script Include + Business Rules — outbound CR notifications |
+| [step4.md](step4.md) | End-to-end testing and troubleshooting |
+
+Start with **step1.md** and work through them in order.
+
+## Full reference
+
+See [ServiceNow.md](../ServiceNow.md) at the repo root for all scripts and field definitions in one place.

@@ -1,163 +1,224 @@
-## Step 2 — Flow Designer: dispatch when a Change Request is created
+# Step 2 — Scripted REST API: inbound Case creation endpoint
 
-Goal: when ServiceNow creates a **Change Request** record, call GitHub `repository_dispatch` with:
-
-- `event_type = "servicenow-cr-update"`
-- `client_payload.action = "created"`
-
-GitHub will then comment on the issue with “New Change Request Created”.
+GitHub Actions POSTs to this endpoint to create a ServiceNow Case. You build it once; it handles all catalog item types.
 
 ---
 
-### 1) Decide where the GitHub issue number lives (required)
+## 2.1 Create the Scripted REST API
 
-The Flow must know the matching issue number. Common options:
-
-- Store it on the **case**: `sn_customerservice_case.u_github_issue_number`
-- Copy it onto the **CR** when the CR is created: `change_request.u_github_issue_number`
-
-You need one of these before CR creation events can reach the correct GitHub issue.
-
-**Recommended (simplest):** add a field on the CR, e.g. `change_request.u_github_issue_number`, and ensure your CR creation process populates it.
-
----
-
-### 2) Create the flow (click-by-click)
-
-1. Open **Flow Designer** (search “Flow Designer” in the left nav filter).
+1. Go to **System Web Services → Scripted REST APIs**.
 2. Click **New**.
-3. Select **Flow**.
-4. Set:
-   - **Name**: `GitHub - CR created (dispatch)`
-   - **Run as**: *System User* (recommended for integrations)
-5. Click **Submit** / **Save** (button text varies by UI).
-6. On the flow canvas, click **Add Trigger**.
-7. Choose trigger type **Record**.
-8. Configure the trigger:
-   - **Table**: `Change Request [change_request]`
-   - **When**: `Created`
-9. Click **Done** / **Save**.
+3. Fill in:
+
+| Field | Value |
+|-------|-------|
+| Name | `GitHub Case Integration` |
+| API ID | `github_case` |
+| Description | Receives GitHub issue payloads and creates Cases |
+
+4. Leave **Enforce ACL** checked (default).
+5. Click **Submit**.
 
 ---
 
-### 3) Add the “Run Script” action (where it is)
+## 2.2 Set the API version
 
-On the flow canvas:
+1. Open the API you just created.
+2. Click the **Versions** tab.
+3. Click the default version (usually `v1`) to open it.
+4. Confirm **Version** is `v1` and **Base path** contains `github_case`.
 
-1. Click **Add Action** (the “+” under the trigger).
-2. In the action search box, type **Run Script**.
-3. Choose **Run Script** (it may appear under “Utilities”).
-4. You will see a script editor with a function signature like `function execute(inputs, outputs) { ... }`.
-5. Paste the script from the next section into that editor.
-
-If your instance **does not show** “Run Script”:
-
-- Install/enable Flow Designer plugins that include the Utilities spoke, **or**
-- Use a **Script step** inside a **Custom Action**, **or**
-- Use a **Subflow** with a script step (same code).
-
----
-
-### 4) Configure action Inputs/Outputs (this is the important part)
-
-When you open the **Run Script** action configuration, you will see **Inputs** and **Outputs** sections.
-
-#### Inputs (required)
-
-Create 1 input that passes the trigger record into the script:
-
-- **Input name**: `current`
-- **Type**: **Record** / **Reference** (wording depends on your instance)
-- **Table**: `Change Request [change_request]`
-- **Value** (Data pill): pick the trigger record pill:
-  - Usually: `Trigger → Record`
-  - Sometimes: `Trigger → Change Request` or `Trigger → Current`
-
-After this mapping, the script can always read the record as:
-
-- `inputs.current`
-
-If you mistakenly map the **Case** record into the input (e.g. `sn_customerservice_case`), this CR-created flow won’t have CR fields like `number`, `state`, etc.
-
-#### Outputs (recommended)
-
-Create these outputs so you can see success/failure in Flow execution details:
-
-- **Output name**: `ok` (Type: True/False)
-- **Output name**: `status` (Type: Integer)
-- **Output name**: `error` (Type: String) *(optional but helpful)*
-
----
-
-### 5) Paste this script (CR created → dispatch)
-
-**Before pasting:** update the 2 field names marked `CHANGE THIS`.
-
-```javascript
-(function execute(inputs, outputs) {
-  // The trigger record is exposed as a “data pill” in most instances.
-  // Depending on your ServiceNow version, it may be inputs.current or a named object.
-  var cr = inputs.current || inputs.change_request || inputs.record || null;
-  if (!cr) {
-    gs.error('Flow: could not resolve Change Request record from inputs');
-    outputs.ok = false;
-    outputs.status = 0;
-    outputs.error = 'No Change Request input record';
-    return;
-  }
-
-  // CHANGE THIS: where you store the GitHub issue number on the CR
-  var issueNum = (cr.u_github_issue_number || '') + '';
-  if (!issueNum) {
-    gs.info('Flow: CR has no GitHub issue number; skipping dispatch');
-    outputs.ok = false;
-    outputs.status = 0;
-    outputs.error = 'CR has no GitHub issue number';
-    return;
-  }
-
-  // CHANGE THIS (recommended): parent case sys_id so GitHub can list all CRs for the case.
-  // If your CR points to the case using a different field, use that.
-  var caseSysId = (cr.parent || '') + '';
-
-  var payload = {
-    github_issue_number: parseInt(issueNum, 10),
-    action: 'created',
-    cr_number: (cr.number || '') + '',
-    cr_sys_id: (cr.sys_id || '') + '',
-    cr_state: (cr.state || '') + '',
-    cr_environment: (cr.u_environment || 'Development') + '',
-    case_sys_id: caseSysId
-  };
-
-  var d = new GitHubRepositoryDispatch();
-  var res = d.send('servicenow-cr-update', payload);
-
-  outputs.ok = res.ok;
-  outputs.status = res.status;
-  outputs.error = res.ok ? '' : (res.body || '');
-})(inputs, outputs);
+The full base URL will be:
+```
+https://<your-instance>.service-now.com/api/<scope>/github_case/v1
 ```
 
 ---
 
-### 6) Activate and test
+## 2.3 Add the POST /case resource
 
-1. Click **Activate** in Flow Designer.
-2. Create a Change Request and make sure it has:
-   - `u_github_issue_number` populated (or your chosen field)
-   - `parent` populated with the case sys_id (or your chosen linkage field)
-3. In GitHub → **Actions**, you should see a run of **ServiceNow inbound**.
-4. In the GitHub issue, you should see a new comment:
-   - “New Change Request Created”
-   - CR link and state/environment
+1. Inside the version, click the **Resources** tab.
+2. Click **New**.
+3. Fill in:
 
-If there is no GitHub comment:
+| Field | Value |
+|-------|-------|
+| Name | `Create Case` |
+| HTTP Method | `POST` |
+| Relative path | `/case` |
 
-- Check the Flow execution details for the “Run Script” step logs.
-- Verify `github.dispatch.config` token access (403 means token/SSO/permissions).
-- Verify the payload includes:
-  - `github_issue_number` (must be the real issue number)
-  - `action: created`
-  - `cr_number`
+4. Paste the script below into the **Script** editor.
+5. Click **Submit**.
 
+### Resource script
+
+```javascript
+(function process(/*RESTAPIRequest*/ request, /*RESTAPIResponse*/ response) {
+
+    var body = request.body.data;
+
+    var issueNumber   = body.issue_number || '';
+    var issueUrl      = body.issue_url || body.u_github_issue_url || '';
+
+    // u_short_description = content of the "### Short Description" section in the GitHub issue body.
+    // body.title = full GitHub issue title ("[SR-Change]: ...") — used only as fallback.
+    var rawTitle      = (body.title || '').replace(/^\[SR-Change\]:\s*/i, '').trim();
+    var title         = body.u_short_description || rawTitle || 'GitHub Issue';
+
+    var description   = body.description || '';
+    var priority      = body.priority || '3 - Moderate';
+    var catalogItem   = body.catalog_item || 'General Requests';
+    var caseType      = body.case_type || 'Service Request';
+    var project       = body.project || '';
+    var product       = body.product || '';
+    var environment   = body.u_project_environment || '';
+    var githubUser    = body.github_user || '';
+    var labels        = body.labels || '';
+
+    var affectedComp       = body.u_affected_component || '';
+    var affectedSvc        = body.u_affected_services || '';
+    var impact             = body.u_impact || '';
+    var impactDescOverall  = body.u_impact_description_overall || '';
+    var impactDescCustomer = body.u_impact_description_customer || '';
+    var implPlan           = body.u_implementation_plan || '';
+    var testPlan           = body.u_test_plan || '';
+    var monChecks          = body.u_monitoring_checks || '';
+    var maintWindow        = body.u_maintenance_window || '';
+    var serviceOutage      = body.u_service_outage || '';
+    var requestDetails     = body.u_request_details || '';
+
+    if (!issueNumber) {
+        response.setStatus(400);
+        response.setBody({ error: 'issue_number is required' });
+        return;
+    }
+
+    // Idempotency: return existing case if one already exists for this issue
+    var existing = new GlideRecord('sn_customerservice_case');
+    existing.addQuery('u_github_issue_number', issueNumber);
+    existing.query();
+    if (existing.next()) {
+        response.setStatus(200);
+        response.setBody({
+            case_number: existing.number.toString(),
+            sys_id: existing.sys_id.toString(),
+            case_sys_id: existing.sys_id.toString(),
+            message: 'Case already exists for this issue'
+        });
+        return;
+    }
+
+    var priorityMap = {
+        '1 - Critical': 1, 'Critical': 1,
+        '2 - High': 2,     'High': 2,
+        '3 - Moderate': 3, 'Moderate': 3, 'Medium': 3,
+        '4 - Low': 4,      'Low': 4
+    };
+    var snPriority = priorityMap[priority] || 3;
+
+    // Standard impact integer: 1 = High, 2 = Medium, 3 = Low
+    var impactMap = {
+        'High': 1, '1 - High': 1, 'Critical': 1, '1 - Critical': 1,
+        'Medium': 2, '2 - Medium': 2, 'Moderate': 2,
+        'Low': 3, '3 - Low': 3, '4 - Low': 3
+    };
+    var snImpact = impact ? (impactMap[impact] || 2) : null;
+
+    var gr = new GlideRecord('sn_customerservice_case');
+    gr.initialize();
+
+    gr.short_description     = title;
+    gr.description           = description;
+    gr.priority              = snPriority;
+    if (snImpact) gr.impact  = snImpact;
+    gr.u_github_issue_number = issueNumber;
+    gr.u_github_issue_url    = issueUrl;
+
+    if (gr.isValidField('u_catalog_item'))                gr.u_catalog_item                = catalogItem;
+    if (gr.isValidField('u_case_type'))                   gr.u_case_type                   = caseType;
+    if (gr.isValidField('u_project'))                     gr.u_project                     = project;
+    if (gr.isValidField('u_product'))                     gr.u_product                     = product;
+    if (gr.isValidField('u_project_environment'))         gr.u_project_environment         = environment;
+    if (gr.isValidField('u_affected_component'))          gr.u_affected_component          = affectedComp;
+    if (gr.isValidField('u_affected_services'))           gr.u_affected_services           = affectedSvc;
+    if (gr.isValidField('u_impact'))                      gr.u_impact                      = impact;
+    if (gr.isValidField('u_impact_description_overall'))  gr.u_impact_description_overall  = impactDescOverall;
+    if (gr.isValidField('u_impact_description_customer')) gr.u_impact_description_customer = impactDescCustomer;
+    if (gr.isValidField('u_implementation_plan'))         gr.u_implementation_plan         = implPlan;
+    if (gr.isValidField('u_test_plan'))                   gr.u_test_plan                   = testPlan;
+    if (gr.isValidField('u_monitoring_checks'))           gr.u_monitoring_checks           = monChecks;
+    if (gr.isValidField('u_maintenance_window'))          gr.u_maintenance_window          = maintWindow;
+    if (gr.isValidField('u_service_outage'))              gr.u_service_outage              = serviceOutage;
+    if (gr.isValidField('u_request_details'))             gr.u_request_details             = requestDetails;
+    if (gr.isValidField('u_github_user'))                 gr.u_github_user                 = githubUser;
+    if (gr.isValidField('u_labels'))                      gr.u_labels                      = labels;
+
+    var sysId = gr.insert();
+
+    if (!sysId) {
+        gs.error('GitHubCaseIntegration: GlideRecord insert failed for issue ' + issueNumber);
+        response.setStatus(500);
+        response.setBody({ error: 'Case creation failed' });
+        return;
+    }
+
+    gs.info('GitHubCaseIntegration: Created case ' + gr.number + ' for GitHub issue #' + issueNumber);
+
+    response.setStatus(201);
+    response.setBody({
+        case_number:  gr.number.toString(),
+        sys_id:       sysId.toString(),
+        case_sys_id:  sysId.toString(),
+        message:      'Case created successfully'
+    });
+
+})(request, response);
+```
+
+---
+
+## 2.4 Note the endpoint URL
+
+After saving, the full endpoint your GitHub secret `SERVICENOW_URL` must point to is:
+
+```
+https://<your-instance>.service-now.com/api/<scope>/github_case/v1/case
+```
+
+The `<scope>` part is shown in the API's **API ID** field as a namespaced path (e.g. `x_12345_github_case` or just `github_case`). Open the API record and copy the **Base path** value to confirm.
+
+---
+
+## 2.5 Payload field mapping reference
+
+This table shows what the GitHub workflow sends and how each key maps to a Case field:
+
+| Payload key | ServiceNow field | Notes |
+|-------------|-----------------|-------|
+| `u_short_description` | `short_description` | Content of `### Short Description` in issue body |
+| `title` | `short_description` (fallback) | GitHub issue title stripped of `[SR-Change]:` prefix |
+| `description` | `description` | HTML-formatted dump of all extracted issue fields |
+| `priority` | `priority` | Mapped: Critical→1, High→2, Moderate→3, Low→4 |
+| `u_impact` | `impact` (integer) + `u_impact` | Mapped: High→1, Medium→2, Low→3 |
+| `u_impact_description_overall` | `u_impact_description_overall` | If field exists on table |
+| `u_impact_description_customer` | `u_impact_description_customer` | If field exists on table |
+| `u_project_environment` | `u_project_environment` | If field exists on table |
+| `u_affected_component` | `u_affected_component` | If field exists on table |
+| `u_affected_services` | `u_affected_services` | If field exists on table |
+| `u_service_outage` | `u_service_outage` | If field exists on table |
+| `u_maintenance_window` | `u_maintenance_window` | If field exists on table |
+| `u_implementation_plan` | `u_implementation_plan` | If field exists on table |
+| `u_test_plan` | `u_test_plan` | If field exists on table |
+| `u_monitoring_checks` | `u_monitoring_checks` | If field exists on table |
+| `issue_number` | `u_github_issue_number` | Used for idempotency check |
+| `issue_url` | `u_github_issue_url` | GitHub issue URL |
+| `project` | `u_project` | If field exists on table |
+| `product` | `u_product` | If field exists on table |
+| `github_user` | `u_github_user` | If field exists on table |
+| `labels` | `u_labels` | If field exists on table |
+
+Fields guarded by `isValidField()` are silently skipped if the column does not exist on the table — no error is thrown.
+
+---
+
+Next: [step3.md](step3.md) — Script Include + Business Rules (outbound CR notifications)

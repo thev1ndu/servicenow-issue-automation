@@ -57,28 +57,35 @@ https://<your-instance>.service-now.com/api/<scope>/github_case/v1/case
 
     var body = request.body.data;
 
-    var issueNumber    = body.issue_number || '';
-    var issueUrl       = body.issue_url || body.u_github_issue_url || '';
-    var title          = body.title || body.u_short_description || 'GitHub Issue - No Title';
-    var description    = body.description || '';
-    var priority       = body.priority || '3 - Moderate';
-    var catalogItem    = body.catalog_item || 'General Requests';
-    var caseType       = body.case_type || 'Service Request';
-    var project        = body.project || '';
-    var product        = body.product || '';
-    var environment    = body.u_project_environment || '';
-    var githubUser     = body.github_user || '';
-    var labels         = body.labels || '';
+    var issueNumber   = body.issue_number || '';
+    var issueUrl      = body.issue_url || body.u_github_issue_url || '';
 
-    var affectedComp   = body.u_affected_component || '';
-    var affectedSvc    = body.u_affected_services || '';
-    var impact         = body.u_impact || '';
-    var implPlan       = body.u_implementation_plan || '';
-    var testPlan       = body.u_test_plan || '';
-    var monChecks      = body.u_monitoring_checks || '';
-    var maintWindow    = body.u_maintenance_window || '';
-    var serviceOutage  = body.u_service_outage || '';
-    var requestDetails = body.u_request_details || '';
+    // u_short_description = content of the "### Short Description" section in the GitHub issue body.
+    // body.title = full GitHub issue title (e.g. "[SR-Change]: My title") — used only as fallback.
+    var rawTitle      = (body.title || '').replace(/^\[SR-Change\]:\s*/i, '').trim();
+    var title         = body.u_short_description || rawTitle || 'GitHub Issue';
+
+    var description   = body.description || '';
+    var priority      = body.priority || '3 - Moderate';
+    var catalogItem   = body.catalog_item || 'General Requests';
+    var caseType      = body.case_type || 'Service Request';
+    var project       = body.project || '';
+    var product       = body.product || '';
+    var environment   = body.u_project_environment || '';
+    var githubUser    = body.github_user || '';
+    var labels        = body.labels || '';
+
+    var affectedComp       = body.u_affected_component || '';
+    var affectedSvc        = body.u_affected_services || '';
+    var impact             = body.u_impact || '';
+    var impactDescOverall  = body.u_impact_description_overall || '';
+    var impactDescCustomer = body.u_impact_description_customer || '';
+    var implPlan           = body.u_implementation_plan || '';
+    var testPlan           = body.u_test_plan || '';
+    var monChecks          = body.u_monitoring_checks || '';
+    var maintWindow        = body.u_maintenance_window || '';
+    var serviceOutage      = body.u_service_outage || '';
+    var requestDetails     = body.u_request_details || '';
 
     if (!issueNumber) {
         response.setStatus(400);
@@ -109,31 +116,42 @@ https://<your-instance>.service-now.com/api/<scope>/github_case/v1/case
     };
     var snPriority = priorityMap[priority] || 3;
 
+    // Standard impact integer: 1 = High, 2 = Medium, 3 = Low
+    var impactMap = {
+        'High': 1, '1 - High': 1, 'Critical': 1, '1 - Critical': 1,
+        'Medium': 2, '2 - Medium': 2, 'Moderate': 2,
+        'Low': 3, '3 - Low': 3, '4 - Low': 3
+    };
+    var snImpact = impact ? (impactMap[impact] || 2) : null;
+
     var gr = new GlideRecord('sn_customerservice_case');
     gr.initialize();
 
     gr.short_description     = title;
     gr.description           = description;
     gr.priority              = snPriority;
+    if (snImpact) gr.impact  = snImpact;
     gr.u_github_issue_number = issueNumber;
     gr.u_github_issue_url    = issueUrl;
 
-    if (gr.isValidField('u_catalog_item'))        gr.u_catalog_item        = catalogItem;
-    if (gr.isValidField('u_case_type'))           gr.u_case_type           = caseType;
-    if (gr.isValidField('u_project'))             gr.u_project             = project;
-    if (gr.isValidField('u_product'))             gr.u_product             = product;
-    if (gr.isValidField('u_project_environment')) gr.u_project_environment = environment;
-    if (gr.isValidField('u_affected_component'))  gr.u_affected_component  = affectedComp;
-    if (gr.isValidField('u_affected_services'))   gr.u_affected_services   = affectedSvc;
-    if (gr.isValidField('u_impact'))              gr.u_impact              = impact;
-    if (gr.isValidField('u_implementation_plan')) gr.u_implementation_plan = implPlan;
-    if (gr.isValidField('u_test_plan'))           gr.u_test_plan           = testPlan;
-    if (gr.isValidField('u_monitoring_checks'))   gr.u_monitoring_checks   = monChecks;
-    if (gr.isValidField('u_maintenance_window'))  gr.u_maintenance_window  = maintWindow;
-    if (gr.isValidField('u_service_outage'))      gr.u_service_outage      = serviceOutage;
-    if (gr.isValidField('u_request_details'))     gr.u_request_details     = requestDetails;
-    if (gr.isValidField('u_github_user'))         gr.u_github_user         = githubUser;
-    if (gr.isValidField('u_labels'))              gr.u_labels              = labels;
+    if (gr.isValidField('u_catalog_item'))                gr.u_catalog_item                = catalogItem;
+    if (gr.isValidField('u_case_type'))                   gr.u_case_type                   = caseType;
+    if (gr.isValidField('u_project'))                     gr.u_project                     = project;
+    if (gr.isValidField('u_product'))                     gr.u_product                     = product;
+    if (gr.isValidField('u_project_environment'))         gr.u_project_environment         = environment;
+    if (gr.isValidField('u_affected_component'))          gr.u_affected_component          = affectedComp;
+    if (gr.isValidField('u_affected_services'))           gr.u_affected_services           = affectedSvc;
+    if (gr.isValidField('u_impact'))                      gr.u_impact                      = impact;
+    if (gr.isValidField('u_impact_description_overall'))  gr.u_impact_description_overall  = impactDescOverall;
+    if (gr.isValidField('u_impact_description_customer')) gr.u_impact_description_customer = impactDescCustomer;
+    if (gr.isValidField('u_implementation_plan'))         gr.u_implementation_plan         = implPlan;
+    if (gr.isValidField('u_test_plan'))                   gr.u_test_plan                   = testPlan;
+    if (gr.isValidField('u_monitoring_checks'))           gr.u_monitoring_checks           = monChecks;
+    if (gr.isValidField('u_maintenance_window'))          gr.u_maintenance_window          = maintWindow;
+    if (gr.isValidField('u_service_outage'))              gr.u_service_outage              = serviceOutage;
+    if (gr.isValidField('u_request_details'))             gr.u_request_details             = requestDetails;
+    if (gr.isValidField('u_github_user'))                 gr.u_github_user                 = githubUser;
+    if (gr.isValidField('u_labels'))                      gr.u_labels                      = labels;
 
     var sysId = gr.insert();
 

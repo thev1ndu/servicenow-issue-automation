@@ -1,145 +1,63 @@
-## Step 1 — Configure ServiceNow to call GitHub (repository_dispatch)
+# Step 1 — Prerequisites: custom columns and system property
 
-Goal: ServiceNow must be able to send this request to GitHub:
+## 1.1 Add custom columns to `sn_customerservice_case`
 
-- `POST https://api.github.com/repos/<OWNER>/<REPO>/dispatches`
-- with JSON body `{ "event_type": "...", "client_payload": {...} }`
+These two columns link a ServiceNow Case back to the GitHub issue that created it.
 
-This repo listens for (at least) these `event_type` values:
+1. Go to **System Definition → Tables**.
+2. Search for `sn_customerservice_case` and open it.
+3. Click the **Columns** tab.
+4. Add each column below by clicking **New**:
 
-- `servicenow-cr-update` (CR created / CR state changed → issue comments)
+| Setting | Column 1 | Column 2 |
+|---------|----------|----------|
+| Column label | GitHub Issue Number | GitHub Issue URL |
+| Column name | `u_github_issue_number` | `u_github_issue_url` |
+| Type | String (length 20) | URL |
+
+5. Save both columns.
+
+> **Why String for the issue number?**  
+> GitHub issue numbers are queried and compared as strings throughout the integration, so String avoids integer-casting edge cases.
 
 ---
 
-### 1) Create the system property `github.dispatch.config`
+## 1.2 Create the system property `github.dispatch.config`
 
-1. Go to **System Properties → All Properties** (or use **System Definition → System Properties** depending on your UI).
+ServiceNow uses this property to authenticate and target the GitHub repo when sending outbound events.
+
+1. Go to **System Definition → System Properties** (or search "System Properties" in the nav filter).
 2. Click **New**.
-3. Set:
-   - **Name**: `github.dispatch.config`
-   - **Type**: String (or Password/Encrypted if your org uses that)
-   - **Value**: JSON (example below)
+3. Fill in:
 
-Use this JSON shape (your example is correct):
+| Field | Value |
+|-------|-------|
+| Name | `github.dispatch.config` |
+| Type | `String` (or `Password` if your org encrypts integration credentials) |
+| Description | GitHub PAT + owner + repo for repository_dispatch calls |
+
+4. Set the **Value** to this JSON (replace with real values):
 
 ```json
 {
   "token": "github_pat_xxxxx",
-  "owner": "123",
-  "repo": "234"
+  "owner": "your-github-org-or-user",
+  "repo": "your-repo-name"
 }
 ```
 
-Notes:
+| Key | What to put |
+|-----|-------------|
+| `token` | A GitHub Personal Access Token with **Contents: Read and write** permission on the target repo |
+| `owner` | GitHub organisation name or username (the part before `/` in the repo URL) |
+| `repo` | Repository name (the part after `/` in the repo URL) |
 
-- **token**: GitHub PAT that can call `repository_dispatch` on the repo.
-- **owner/repo**: GitHub org/user + repo name.
+5. Save the property.
 
----
-
-### 2) Create Script Include `GitHubRepositoryDispatch`
-
-1. Go to **System Definition → Script Includes**.
-2. Click **New**.
-3. Fill:
-   - **Name**: `GitHubRepositoryDispatch`
-   - **Client callable**: **false**
-   - **Accessible from**: (follow your org policy; usually “All application scopes” is not needed)
-4. Paste your Script Include (recommended with 2 small additions):
-   - set a timeout
-   - validate `eventType` exists
-
-Use this version (based on yours):
-
-```javascript
-var GitHubRepositoryDispatch = Class.create();
-GitHubRepositoryDispatch.prototype = {
-    initialize: function() {
-        this.config = this._loadConfig();
-        this.token = this.config.token || '';
-        this.owner = this.config.owner || '';
-        this.repo = this.config.repo || '';
-        this.baseUrl = 'https://api.github.com/repos/' + this.owner + '/' + this.repo + '/dispatches';
-    },
-
-    _loadConfig: function() {
-        var raw = gs.getProperty('github.dispatch.config', '{}');
-        try {
-            return JSON.parse(raw);
-        } catch (e) {
-            gs.error('GitHubRepositoryDispatch: Invalid JSON in github.dispatch.config. Error: ' + e.message);
-            return {};
-        }
-    },
-
-    send: function(eventType, clientPayload) {
-        if (!eventType) {
-            return { ok: false, status: 0, body: 'missing_event_type' };
-        }
-        if (!this.token || !this.owner || !this.repo) {
-            gs.error('GitHubRepositoryDispatch: Missing token, owner, or repo in github.dispatch.config');
-            return { ok: false, status: 0, body: 'configuration_error' };
-        }
-
-        try {
-            var rm = new sn_ws.RESTMessageV2();
-            rm.setHttpMethod('POST');
-            rm.setEndpoint(this.baseUrl);
-            rm.setHttpTimeout(30000); // 30 seconds
-            rm.setRequestHeader('Accept', 'application/vnd.github+json');
-            rm.setRequestHeader('Authorization', 'Bearer ' + this.token);
-            rm.setRequestHeader('X-GitHub-Api-Version', '2022-11-28');
-            rm.setRequestHeader('Content-Type', 'application/json');
-
-            rm.setRequestBody(JSON.stringify({
-                event_type: eventType,
-                client_payload: clientPayload || {}
-            }));
-
-            var response = rm.execute();
-            var status = response.getStatusCode();
-            var responseBody = response.haveError() ? response.getErrorMessage() : response.getBody();
-            var ok = (status === 204); // GitHub returns 204 No Content on success
-
-            if (!ok) {
-                gs.error('GitHubRepositoryDispatch failed. Status=' + status + ' Response=' + responseBody);
-            }
-            return { ok: ok, status: status, body: responseBody };
-        } catch (ex) {
-            gs.error('GitHubRepositoryDispatch exception: ' + ex.message);
-            return { ok: false, status: 0, body: ex.message };
-        }
-    },
-
-    type: 'GitHubRepositoryDispatch'
-};
-```
+> **Token permissions required:**  
+> Fine-grained token: `Contents: Read and write` on the specific repo.  
+> Classic token: `repo` scope.
 
 ---
 
-### 3) Quick connectivity test (server-side)
-
-Run this from **Scripts - Background** (or a test Script Include / fix script):
-
-```javascript
-var d = new GitHubRepositoryDispatch();
-var result = d.send('servicenow-cr-update', {
-  github_issue_number: 1,
-  action: 'state_changed',
-  cr_number: 'CHG0000001',
-  cr_sys_id: gs.generateGUID(),
-  cr_state: 'New',
-  previous_state: 'Draft',
-  cr_environment: 'Development',
-  case_sys_id: gs.generateGUID()
-});
-gs.info(JSON.stringify(result));
-```
-
-Expected:
-
-- `result.ok = true`
-- `result.status = 204`
-
-If you see 401/403/404, fix the PAT / owner / repo.
-
+Next: [step2.md](step2.md) — Scripted REST API (inbound Case creation)
