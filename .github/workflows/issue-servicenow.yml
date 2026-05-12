@@ -50,11 +50,11 @@ jobs:
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number
             });
-            const caseDone = comments.some(c => c.user.type === 'Bot' && c.body.includes('ServiceNow Case Created Successfully'));
-            // If case already exists and this is an edit → update path; otherwise normal create path
+            const caseDone  = comments.some(c => c.user.type === 'Bot' && c.body.includes('ServiceNow Case Created Successfully'));
+            const crCreated = comments.some(c => c.user.type === 'Bot' && c.body.includes('New Change Request Created'));
             const isEdit = (action === 'edited');
             core.setOutput('should_run',    String(!caseDone));
-            core.setOutput('should_update', String(caseDone && isEdit));
+            core.setOutput('should_update', String(caseDone && isEdit && !crCreated));
             core.setOutput('issue_number',  String(issue.number));
             core.setOutput('label_name',    labelName);
 
