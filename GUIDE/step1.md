@@ -60,4 +60,38 @@ ServiceNow uses this property to authenticate and target the GitHub repo when se
 
 ---
 
+## 1.3 Configure `.github/servicenow-config.yml`
+
+This file lives in the repository and holds the ServiceNow constants that are applied to **every** Case created by GitHub Actions. Edit it once and commit — no secrets or Actions variables needed.
+
+**File location:** `.github/servicenow-config.yml`
+
+```yaml
+# ServiceNow constants applied to every Case created from a GitHub issue.
+# Edit these values to match your ServiceNow instance — then commit.
+
+case:
+  category: "Issue"                                   # Category display value (e.g. "Issue", "Request")
+  account: "Your Account Name"                        # Exact display name from the Account table in SN
+  announcement_type: "General"                        # Announcement Type choice value from SN dropdown
+
+project:
+  name: "Your Project Name"                           # Project reference — exact display name from SN
+  product: "Your Product Name"                        # Product reference — exact display name from SN
+  wso2_product: "Your WSO2 Product Name"              # WSO2 Product reference — exact display name from SN
+```
+
+| Key | SN table / field | How to find the exact value |
+|-----|------------------|-----------------------------|
+| `case.category` | `sn_customerservice_case.category` | Open any Case → right-click **Category** → **Show value** |
+| `case.account` | `sn_customerservice_case.account` (reference) | Open any Case → copy the **Account** display name exactly |
+| `case.announcement_type` | `sn_customerservice_case.u_announcement_type` (choice) | Open any Case → right-click **Announcement Type** → **Show value** |
+| `project.name` | `project` (reference) | Open any Case → copy the **Project** display name exactly |
+| `project.product` | `product` (reference) | Open any Case → copy the **Product** display name exactly |
+| `project.wso2_product` | `u_wso2_product` (reference) | Open any Case → copy the **WSO2 Product** display name exactly |
+
+> **Important:** For reference fields (`account`, `case_type`, `project`, `product`, `wso2_product`), the value must **exactly** match the display name of the record in ServiceNow. If it doesn't match, ServiceNow silently leaves the field blank — no error is returned.
+
+---
+
 Next: [step2.md](step2.md) — Scripted REST API (inbound Case creation)

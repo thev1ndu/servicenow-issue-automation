@@ -5,7 +5,6 @@
 case:
   category: "Issue"                                   # Category (integer/choice) — display value e.g. "Issue"
   account: "Customer Portal Customer Account1"        # Account reference field — exact display name from SN
-  case_type: "Service Request"                        # Case Type reference field — exact display name from SN
   announcement_type: "General"                        # Announcement Type choice — exact value from SN dropdown
 
 project:

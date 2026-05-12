@@ -11,11 +11,13 @@ This document records exactly what was configured on the ServiceNow instance to 
 | Custom column | `sn_customerservice_case` table | `u_github_issue_number` (String, length 20) |
 | Custom column | `sn_customerservice_case` table | `u_github_issue_url` (URL) |
 | Scripted REST API | System Web Services → Scripted REST APIs | `GitHub Case Integration` |
-| REST Resource (POST) | Inside the API above | `/case` |
+| REST Resource (POST) | Inside `GitHub Case Integration` v1 | `/case` — creates Case from GitHub issue |
+| REST Resource (PATCH) | Inside `GitHub Case Integration` v1 | `/case` — updates existing Case on issue edit |
 | Script Include | System Definition → Script Includes | `GitHubRepositoryDispatch` |
-| System Properties | System Definition → System Properties | `github.dispatch.config` |
+| System Property | System Definition → System Properties | `github.dispatch.config` |
 | Business Rule | `change_request`, after insert | `Notify GitHub on CR created` |
 | Business Rule | `change_request`, after update | `Notify GitHub on CR state change` |
+| GitHub config file | `.github/servicenow-config.yml` in the repo | SN constants: account, project, product, category |
 
 ---
 
@@ -225,16 +227,16 @@ When a GitHub issue is edited, the workflow sends `PATCH` to the same URL as the
         return;
     }
 
+    // Each entry: { field: "Priority", old: "3 - Moderate", new: "1 - Critical" }
     var changes = [];
 
-    // Track a plain string/text field change and update it
+    // Track a plain string/text field change
     function updateStr(label, fieldName, newValue) {
         if (!newValue || !gr.isValidField(fieldName)) return;
         var oldVal = (gr.getValue(fieldName) || '').trim();
         var newVal = (newValue + '').trim();
         if (oldVal === newVal) return;
-        var clip = function(s) { return s.length > 80 ? s.substring(0, 80) + '…' : s; };
-        changes.push(label + ' was updated from "' + clip(oldVal) + '" to "' + clip(newVal) + '" by ' + githubUser);
+        changes.push({ field: label, old: oldVal || null, new: newVal });
         gr.setValue(fieldName, newVal);
     }
 
@@ -250,7 +252,7 @@ When a GitHub issue is edited, the workflow sends `PATCH` to the same URL as the
         var newPriority = priorityMap[newPriorityRaw] || 3;
         var oldPriority = parseInt(gr.getValue('priority') || '3', 10);
         if (oldPriority !== newPriority) {
-            changes.push('Priority was updated from ' + gr.priority.getDisplayValue() + ' to ' + newPriorityRaw + ' by ' + githubUser);
+            changes.push({ field: 'Priority', old: gr.priority.getDisplayValue() || null, new: newPriorityRaw });
             gr.priority = newPriority;
         }
     }
@@ -266,7 +268,7 @@ When a GitHub issue is edited, the workflow sends `PATCH` to the same URL as the
         var newImpact = impactMap[newImpactRaw] || 2;
         var oldImpact = parseInt(gr.getValue('impact') || '0', 10);
         if (oldImpact !== newImpact) {
-            changes.push('Impact was updated from ' + gr.impact.getDisplayValue() + ' to ' + newImpactRaw + ' by ' + githubUser);
+            changes.push({ field: 'Impact', old: gr.impact.getDisplayValue() || null, new: newImpactRaw });
             gr.impact = newImpact;
         }
     }
@@ -277,7 +279,7 @@ When a GitHub issue is edited, the workflow sends `PATCH` to the same URL as the
     if (newShortDesc) {
         var oldShortDesc = (gr.getValue('short_description') || '').trim();
         if (oldShortDesc !== newShortDesc) {
-            changes.push('Short Description was updated from "' + oldShortDesc + '" to "' + newShortDesc + '" by ' + githubUser);
+            changes.push({ field: 'Short Description', old: oldShortDesc || null, new: newShortDesc });
             gr.short_description = newShortDesc;
         }
     }
@@ -293,16 +295,23 @@ When a GitHub issue is edited, the workflow sends `PATCH` to the same URL as the
     updateStr('Test Plan',                    'u_test_plan',                   body.u_test_plan);
     updateStr('Request Details',              'u_request_details',             body.u_request_details);
 
-    // Always refresh the HTML description (it's a regenerated dump of all fields)
+    // Always refresh the HTML description (regenerated dump of all issue fields)
     var newDesc = body.description || '';
     if (newDesc) {
         gr.description = newDesc;
         if (gr.isValidField('u_html_description')) gr.u_html_description = newDesc;
     }
 
-    // Add work note only when tracked fields actually changed
+    // Work note — only when tracked fields changed
     if (changes.length > 0) {
-        gr.work_notes = 'GitHub Integration\n' + changes.join('\n');
+        var caseNum   = gr.number.toString();
+        var noteLines = ['Field changes by GitHub Integration (ServiceNow Case: ' + caseNum + ')', ''];
+        for (var i = 0; i < changes.length; i++) {
+            var ch     = changes[i];
+            var oldStr = ch.old ? ch.old : '[Empty]';
+            noteLines.push('• ' + ch.field + ': [' + oldStr + '] → ' + ch.new);
+        }
+        gr.work_notes = noteLines.join('\n');
     }
 
     gr.update();

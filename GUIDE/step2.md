@@ -237,24 +237,42 @@ This table shows what the GitHub workflow sends and how each key maps to a Case 
 > **`setDisplayValue` note:** For reference fields, ServiceNow looks up the referenced record by its display name at insert time. If the name doesn't exactly match a record in the target table, the field will be left blank — no error is thrown. Verify the display name in `servicenow-config.yml` matches exactly what appears in ServiceNow.
 
 > **`u_monitoring_checks` and `u_maintenance_window`:** These fields do not exist on `sn_customerservice_case`. Their content is included in the HTML description instead.
-| `u_impact_description_overall` | `u_impact_description_overall` | If field exists on table |
-| `u_impact_description_customer` | `u_impact_description_customer` | If field exists on table |
-| `u_project_environment` | `u_project_environment` | If field exists on table |
-| `u_affected_component` | `u_affected_component` | If field exists on table |
-| `u_affected_services` | `u_affected_services` | If field exists on table |
-| `u_service_outage` | `u_service_outage` | If field exists on table |
-| `u_maintenance_window` | `u_maintenance_window` | If field exists on table |
-| `u_implementation_plan` | `u_implementation_plan` | If field exists on table |
-| `u_test_plan` | `u_test_plan` | If field exists on table |
-| `u_monitoring_checks` | `u_monitoring_checks` | If field exists on table |
-| `issue_number` | `u_github_issue_number` | Used for idempotency check |
-| `issue_url` | `u_github_issue_url` | GitHub issue URL |
-| `project` | `u_project` | If field exists on table |
-| `product` | `u_product` | If field exists on table |
-| `github_user` | `u_github_user` | If field exists on table |
-| `labels` | `u_labels` | If field exists on table |
 
-Fields guarded by `isValidField()` are silently skipped if the column does not exist on the table — no error is thrown.
+---
+
+## 2.6 Add the PATCH /case resource (issue edits → update existing case)
+
+When a GitHub issue is edited **after** the case already exists, the workflow sends a `PATCH` to the same URL with the updated field values. Add this as a second resource in the same API.
+
+1. Inside the version, click the **Resources** tab.
+2. Click **New**.
+3. Fill in:
+
+| Field | Value |
+|-------|-------|
+| Name | `Update Case` |
+| HTTP Method | `PATCH` |
+| Relative path | `/case` |
+
+4. Paste the script from [ServiceNow.md](../ServiceNow.md) section 3 into the **Script** editor.
+5. Click **Submit**.
+
+### What the PATCH resource does
+
+| Step | Detail |
+|------|--------|
+| Lookup | Finds the case by `u_github_issue_number` |
+| Diff | Compares each incoming field to the current SN value |
+| Update | Sets only the fields that have changed |
+| Work note | Adds a note in the format: `Priority was updated from 3 - Moderate to 1 - Critical by johndoe` |
+| Description refresh | Always updates `description` and `u_html_description` with the regenerated HTML dump |
+| Response | Returns `case_number`, `sys_id`, `changes` (count), `change_log` (array of change strings) |
+
+### Fields tracked for work notes
+
+Priority, Impact, Short Description, Impact Description (Overall), Impact Description (Customer), Environment, Affected Component, Affected Services, Service Outage, Implementation Plan, Test Plan, Request Details.
+
+> **`u_monitoring_checks` and `u_maintenance_window`** are not tracked individually — they appear in the HTML description refresh only.
 
 ---
 
