@@ -82,7 +82,11 @@ For each variable:
 |---|---|---|
 | `github_issue_number` | String | Trigger > Customer Service Case Record > **u_github_issue_number** |
 | `case_number` | String | Trigger > Customer Service Case Record > **Number** |
-| `comments_changed` | String | Trigger > Customer Service Case Record > **Additional comments** |
+| `case_sys_id` | String | Trigger > Customer Service Case Record > **Sys ID** |
+
+> Do NOT map `Additional comments` as a data pill — journal fields return a Java object
+> reference (e.g. `com.glide.glideobject.Journal@6e3f83c9`) instead of the actual text.
+> The script reads the journal entry directly using `GlideRecord` instead.
 
 #### Write the Script
 
@@ -91,9 +95,14 @@ In the **Script** area, paste:
 ```javascript
 (function execute(inputs, outputs) {
 
-  var issueNumber  = inputs.github_issue_number + '';
-  var caseNumber   = inputs.case_number + '';
-  var commentText  = inputs.comments_changed + '';
+  var issueNumber = inputs.github_issue_number + '';
+  var caseNumber  = inputs.case_number + '';
+  var caseSysId   = inputs.case_sys_id + '';
+
+  // Journal fields must be read via GlideRecord — data pills return a Java object reference
+  var gr = new GlideRecord('sn_customerservice_case');
+  gr.get(caseSysId);
+  var commentText = gr.comments.getJournalEntry(1) + '';
 
   outputs.issue_number = issueNumber;
   outputs.note_text    = commentText;
@@ -106,6 +115,9 @@ In the **Script** area, paste:
 
 })(inputs, outputs);
 ```
+
+> `getJournalEntry(1)` returns the single most recent entry added in this update — exactly
+> what the agent just typed. Passing `1` means "get the latest 1 entry".
 
 #### Define Output Variables
 
@@ -280,4 +292,5 @@ If the GitHub comment does not appear:
 | `http_status` is `401` | The token in `github.dispatch.config` is expired or wrong |
 | `http_status` is `404` | The owner or repo in `github.dispatch.config` is wrong |
 | `http_status` is `422` | The `sn-comment-to-github.yml` workflow is not deployed to the default branch |
-| Comment is blank on GitHub | The data pill for `comments_changed` is not mapped to the Additional comments field |
+| Comment shows `Journal@...` on GitHub | The old flow used a data pill for `Additional comments` — replace `comments_changed` input with `case_sys_id` and use `gr.comments.getJournalEntry(1)` in the script |
+| Comment is blank on GitHub | `getJournalEntry(1)` returned empty — confirm the trigger fired on an actual comment update, not a field edit |
