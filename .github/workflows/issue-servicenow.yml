@@ -132,7 +132,7 @@ jobs:
                 if (!warned) {
                   await github.rest.issues.createComment({
                     owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
-                    body: `## ❌ Template Validation Failed\n\n**Invalid Template for Service Request Labels.**\n\nRemove SR labels or use an official SR template.`
+                    body: `❌ Template Validation Failed\n\n**Invalid Template for Service Request Labels.**\n\nRemove SR labels or use an official SR template.`
                   });
                   for (const lbl of [srTypeLabel, catalogLabel].filter(Boolean)) {
                     try { await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, name: lbl }); } catch (_) {}
@@ -146,9 +146,9 @@ jobs:
             }
             if (!srTypeLabel || !catalogLabel) {
               let msg = !srTypeLabel && !catalogLabel
-                ? `## ❌ Template Validation Failed\n\n**Missing:** \`SRType/\` and \`CatalogueItem/\` labels`
-                : !srTypeLabel ? `## ❌ Template Validation Failed\n\n**Missing SRType/** (you have ${catalogLabel})`
-                : `## ❌ Template Validation Failed\n\n**Missing CatalogueItem/** (you have ${srTypeLabel})`;
+                ? `❌ Template Validation Failed\n\n**Missing:** \`SRType/\` and \`CatalogueItem/\` labels`
+                : !srTypeLabel ? `❌ Template Validation Failed\n\n**Missing SRType/** (you have ${catalogLabel})`
+                : `❌ Template Validation Failed\n\n**Missing CatalogueItem/** (you have ${srTypeLabel})`;
               const { data: ex } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber });
               const dup = ex.some(c => c.user.type === 'Bot' && c.body.includes('Template Validation Failed') && c.body.includes('Missing'));
               if (!dup) await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, body: msg });
@@ -164,7 +164,7 @@ jobs:
               }
             }
             if (!issueTitle.startsWith('[SR-Change]:')) {
-              await failValidation(`## ❌ Template Validation Failed\n\nTitle must start with \`[SR-Change]:\`.`, 'Title format invalid');
+              await failValidation(`❌ Template Validation Failed\n\nTitle must start with \`[SR-Change]:\`.`, 'Title format invalid');
               return;
             }
             const rulesets = {
@@ -175,13 +175,13 @@ jobs:
             };
             const rules = rulesets[catalogLabel];
             if (!rules) {
-              await failValidation(`## ❌ Template Validation Failed\n\nUnknown catalog: **${catalogLabel}**`, 'Unknown catalog type');
+              await failValidation(`❌ Template Validation Failed\n\nUnknown catalog: **${catalogLabel}**`, 'Unknown catalog type');
               return;
             }
             const bodyLower = issueBody.toLowerCase();
             const missing = rules.requiredFields.filter(f => !bodyLower.includes(f.toLowerCase()));
             if (missing.length) {
-              await failValidation(`## ❌ Template Validation Failed\n\n**Missing fields for ${catalogLabel}:**\n` + missing.map(f => `- ${f}`).join('\n'), 'Missing: ' + missing.join(', '));
+              await failValidation(`❌ Template Validation Failed\n\n**Missing fields for ${catalogLabel}:**\n` + missing.map(f => `- ${f}`).join('\n'), 'Missing: ' + missing.join(', '));
               return;
             }
             if (rules.allowedValues && rules.allowedValues.Priority) {
@@ -190,7 +190,7 @@ jobs:
               const okPri = allowed.some(a => priRaw.toLowerCase().includes(a.toLowerCase()));
               if (!okPri) {
                 await failValidation(
-                  `## ❌ Template Validation Failed\n\n**Invalid Priority for ${catalogLabel}.**\n\nAllowed: ${allowed.join(', ')}\n\nFound: \`${priRaw || '(empty)'}\``,
+                  `❌ Template Validation Failed\n\n**Invalid Priority for ${catalogLabel}.**\n\nAllowed: ${allowed.join(', ')}\n\nFound: \`${priRaw || '(empty)'}\``,
                   'Priority not allowed for catalog'
                 );
                 return;
@@ -205,7 +205,7 @@ jobs:
             await github.rest.issues.addLabels({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, labels: ['validation-passed'] });
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
-              body: `## ✅ Template Validation Passed\n\n**${catalogLabel}** — case will be created automatically.`
+              body: `✅ Template Validation Passed\n\n**${catalogLabel}** — case will be created automatically.`
             });
             core.setOutput('validation_passed', 'true');
             core.setOutput('sr_type', srTypeLabel.replace('SRType/', ''));
@@ -249,5 +249,5 @@ jobs:
             const caseSysId = `${{ needs.create-case.outputs.case_sys_id }}`;
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
-              body: `## 👀 Watching for Change Requests\n\nServiceNow case **${caseNumber || 'created'}** is monitored for CRs.\n\n---\n*GitHub Actions*`
+              body: `👀 Watching for Change Requests\n\nServiceNow case **${caseNumber || 'created'}** is monitored for CRs.\n\n---\n*GitHub Actions*`
             });

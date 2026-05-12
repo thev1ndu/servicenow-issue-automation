@@ -142,12 +142,12 @@ jobs:
               ? `${snUiUrl}/now/nav/ui/classic/params/target/sn_customerservice_case.do?sys_id=${caseSysId}&sysparm_view=wso2_cs_generic`
               : null;
             const caseDisplay  = caseUrl ? `[${caseNumber}](${caseUrl})` : `\`${caseNumber}\``;
-            const body = changesCount > 0
-              ? `## 🔄 ServiceNow Case Updated\n\n**Case:** ${caseDisplay} — **${changesCount} field(s) updated.**\n\n---\n*Automated via GitHub Actions*`
-              : `## ℹ️ No Field Changes Detected\n\n**Case:** ${caseDisplay} — issue was edited but the tracked fields have not changed.\n\n---\n*Automated via GitHub Actions*`;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNum, body
-            });
+            if (changesCount > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNum,
+                body: `🔄 ServiceNow Case Updated\n\n**Case:** ${caseDisplay} — **${changesCount} field(s) updated.**\n\n---\n*Automated via GitHub Actions*`
+              });
+            }
 
       - if: failure()
         uses: actions/github-script@v8
@@ -156,5 +156,5 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: parseInt('${{ inputs.issue_number }}', 10),
-              body: `## ❌ ServiceNow Case Update Failed\n\n[View workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n---\n*Contact support if the issue persists.*`
+              body: `❌ ServiceNow Case Update Failed\n\n[View workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n---\n*Contact support if the issue persists.*`
             });
