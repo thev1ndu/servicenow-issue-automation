@@ -1,0 +1,67 @@
+name: GitHub Comment → ServiceNow
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: read
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    if: github.event.comment.user.type != 'Bot'
+    timeout-minutes: 5
+    steps:
+      - id: find_case
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber
+            });
+            const caseComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('ServiceNow Case Created Successfully')
+            );
+            if (!caseComment) { core.setOutput('has_case', 'false'); return; }
+            const urlMatch = caseComment.body.match(/sys_id=([a-f0-9]{32})/);
+            const sysId = urlMatch ? urlMatch[1] : '';
+            const caseNumMatch = caseComment.body.match(/\[([A-Z0-9]+)\]\(/);
+            const caseNumber = caseNumMatch ? caseNumMatch[1] : '';
+            core.setOutput('has_case', sysId ? 'true' : 'false');
+            core.setOutput('sys_id', sysId);
+            core.setOutput('case_number', caseNumber);
+
+      - if: steps.find_case.outputs.has_case == 'true'
+        uses: actions/github-script@v8
+        env:
+          SYS_ID: ${{ steps.find_case.outputs.sys_id }}
+          SERVICENOW_UI_URL: ${{ secrets.SERVICENOW_UI_URL }}
+          SERVICENOW_USERNAME: ${{ secrets.SERVICENOW_USERNAME }}
+          SERVICENOW_PASSWORD: ${{ secrets.SERVICENOW_PASSWORD }}
+        with:
+          script: |
+            const commentBody = context.payload.comment.body;
+            const githubUser = context.payload.comment.user.login;
+            const commentUrl = context.payload.comment.html_url;
+            const sysId = process.env.SYS_ID;
+            const snBaseUrl = process.env.SERVICENOW_UI_URL;
+            const commentText = `GitHub comment from @${githubUser}:\n\n${commentBody}\n\nSource: ${commentUrl}`;
+            const auth = Buffer.from(`${process.env.SERVICENOW_USERNAME}:${process.env.SERVICENOW_PASSWORD}`).toString('base64');
+            const response = await fetch(`${snBaseUrl}/api/now/table/sn_customerservice_case/${sysId}`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': `Basic ${auth}`
+              },
+              body: JSON.stringify({ comments: commentText })
+            });
+            if (!response.ok) {
+              const text = await response.text();
+              core.setFailed(`ServiceNow comment failed: HTTP ${response.status}\n${text}`);
+            } else {
+              core.info(`Comment posted to ServiceNow (HTTP ${response.status})`);
+            }

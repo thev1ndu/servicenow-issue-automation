@@ -1,7 +1,7 @@
 name: ServiceNow inbound
 on:
   repository_dispatch:
-    types: [servicenow-cr-update, validation-passed]
+    types: [servicenow-cr-update, validation-passed, servicenow-note]
 
 
 permissions:
@@ -68,12 +68,12 @@ jobs:
               ).join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `## New Change Request Created\n\n**CR Number:** [${crNumber}](${crUrl})\n**State:** ${crState}\n**Environment:** ${crEnvironment}${metaLine}\n### All Change Requests for this Case (${allCRs.length})\n${crListMarkdown}\n\n---\n*Automatically notified by ServiceNow*`
+                body: `New Change Request Created\n\n**CR Number:** [${crNumber}](${crUrl})\n**State:** ${crState}\n**Environment:** ${crEnvironment}${metaLine}\nAll Change Requests for this Case (${allCRs.length})\n${crListMarkdown}\n\n---\n*Automatically notified by ServiceNow*`
               });
             } else if (action === 'state_changed') {
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `## Change Request State Updated\n\n**CR Number:** [${crNumber}](${crUrl})\n**State Change:** ${previousState} → **${crState}**${metaLine}\n\n---\n*Automatically notified by ServiceNow*`
+                body: `Change Request State Updated\n\n**CR Number:** [${crNumber}](${crUrl})\n**State Change:** ${previousState} → **${crState}**${metaLine}\n\n---\n*Automatically notified by ServiceNow*`
               });
             }
 
@@ -87,3 +87,28 @@ jobs:
       case_type: ${{ github.event.client_payload.case_type || 'Service Request' }}
       sr_type: ${{ github.event.client_payload.sr_type || '' }}
       catalog_prefix: ${{ github.event.client_payload.catalog_prefix || '' }}
+
+  sn-note:
+    if: github.event.action == 'servicenow-note'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const p = context.payload.client_payload || {};
+            const issueNumber = parseInt(p.issue_number, 10);
+            const noteText = p.note_text || '';
+            const noteType = p.note_type || 'additional_comments';
+            const caseNumber = p.case_number || '';
+            const snUser = p.sn_user || 'ServiceNow Agent';
+            if (!issueNumber || !noteText) {
+              core.warning('Missing issue_number or note_text — skipping');
+              return;
+            }
+            const label = noteType === 'work_notes' ? '📋 ServiceNow Work Note' : '💬 ServiceNow Comment';
+            const caseRef = caseNumber ? ` — Case ${caseNumber}` : '';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
+              body: `${label}${caseRef}\n\n${noteText}\n\n---\n*Posted by ${snUser} via ServiceNow*`
+            });
