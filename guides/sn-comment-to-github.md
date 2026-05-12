@@ -13,97 +13,25 @@ GitHub event type sent: `servicenow-note`
 1. Agent types a comment in the ServiceNow case and clicks Post
 2. This Flow fires because the `comments` or `work_notes` field changed
 3. A Script step reads the latest journal entry and the linked GitHub issue number
-4. A REST call is made to the GitHub API (`repository_dispatch`)
+4. A REST call is made to the GitHub API (`repository_dispatch`) using the `dispatch` HTTP Method
 5. The `sn-comment-to-github.yml` GitHub Action picks it up and posts the comment on the issue
 
 ---
 
-## Prerequisites
+## Before you start
 
-- ServiceNow admin or Flow Designer author role
-- A GitHub Personal Access Token (PAT) with `repo` scope
-- The case table must have a field `u_github_issue_number` (String) that stores the GitHub issue number
+Complete [setup-rest-message.md](setup-rest-message.md) first.
+That guide creates the `GitHub Integration` REST Message with the `dispatch` HTTP Method that this flow uses.
 
----
-
-## Part 1 — Create a REST Message for GitHub (do this once, shared with both flows)
-
-This creates a reusable outbound REST definition that both flows will use.
-
-### 1.1 Create the REST Message record
-
-1. In the ServiceNow top navigation, type **Outbound REST Messages** or go to:
-   `All > System Web Services > Outbound > REST Messages`
-2. Click **New**
-3. Fill in these fields:
-   - **Name**: `GitHub Repository Dispatch`
-   - **Description**: `Sends repository_dispatch events to GitHub Actions`
-   - **Endpoint**: `https://api.github.com/repos/YOUR_ORG/YOUR_REPO/dispatches`
-     Replace `YOUR_ORG` and `YOUR_REPO` with your actual GitHub org and repo name
-   - **Authentication type**: `No authentication` (we will pass the token manually in the header)
-4. Click **Submit** to save
-
-### 1.2 Add the HTTP Method
-
-After saving, you will be inside the REST Message record.
-
-1. Scroll down to the **HTTP Methods** related list
-2. Click **New**
-3. Fill in:
-   - **Name**: `dispatch`
-   - **HTTP method**: `POST`
-   - **Endpoint**: leave blank (inherits from the REST Message)
-4. Click **Save** (not Submit yet — stay on this record)
-
-### 1.3 Add HTTP Request Headers
-
-Still on the HTTP Method record, scroll to **HTTP Request** tab or the **HTTP Headers** section.
-
-Click **Insert a new row** and add these two headers:
-
-| Name | Value |
-|---|---|
-| `Content-Type` | `application/json` |
-| `Accept` | `application/vnd.github+json` |
-| `Authorization` | `Bearer YOUR_GITHUB_PAT` |
-
-Replace `YOUR_GITHUB_PAT` with your actual Personal Access Token.
-
-> **Security tip:** Store the PAT as a ServiceNow System Property or Connection Credential and reference it using `${gs.getProperty('github.pat')}` instead of pasting it directly.
-
-### 1.4 Add the Request Body
-
-Still on the HTTP Method record, click the **HTTP Request** tab.
-
-In the **Request body** field, paste:
-
-```json
-{"event_type":"servicenow-note","client_payload":{"issue_number":"${issue_number}","note_text":"${note_text}","note_type":"${note_type}","case_number":"${case_number}","sn_user":"${sn_user}"}}
-```
-
-These `${variable_name}` placeholders are ServiceNow REST Message variables. They will be filled in by the script before the call is made.
-
-### 1.5 Add REST Message Variables
-
-Scroll down to the **Variable Substitutions** related list (or the **Variables** tab).
-
-Click **New** for each of the following:
-
-| Name | Test value (example) |
-|---|---|
-| `issue_number` | `42` |
-| `note_text` | `Test comment from ServiceNow` |
-| `note_type` | `additional_comments` |
-| `case_number` | `CS0000001` |
-| `sn_user` | `John Smith` |
-
-Click **Update** after adding all variables.
+Also confirm:
+- The case table has a field `u_github_issue_number` (String) that stores the GitHub issue number
+- You have Flow Designer author role
 
 ---
 
-## Part 2 — Create the Flow
+## Part 1 — Create the Flow
 
-### 2.1 Open Flow Designer
+### 1.1 Open Flow Designer
 
 Go to: `All > Process Automation > Flow Designer`
 
@@ -112,53 +40,56 @@ Click **New > Flow**
 Fill in:
 - **Name**: `SN Comment to GitHub`
 - **Description**: `Posts ServiceNow case comments and work notes to the linked GitHub issue`
-- **Run as**: `System User` (so it has access to case fields)
+- **Run as**: `System User`
 
 Click **Submit**. The flow editor opens.
 
 ---
 
-### 2.2 Set the Trigger
+### 1.2 Set the Trigger
 
 Click **Add a trigger** (the first block at the top of the canvas).
 
 1. Select **Record > Updated**
-2. In the **Table** field, type and select: `Customer Service Case [sn_customerservice_case]`
+2. **Table**: type and select `Customer Service Case [sn_customerservice_case]`
 3. Under **Condition**, click **Add Filters**:
    - Field: `Additional comments` | Operator: `changes`
    - Click **OR**
    - Field: `Work notes` | Operator: `changes`
-4. Leave **Run trigger** set to: `For every update that causes condition to be true`
+4. Leave **Run trigger** as: `For every update that causes condition to be true`
 
 Click **Done**.
 
 ---
 
-### 2.3 Add a Script Step
+### 1.3 Add Script Step 1 — Read the comment and prepare data
 
-Click the **+** (plus) button below the trigger to add an action.
+Click the **+** (plus) button below the trigger.
 
-1. In the action picker, search for **Script** and select it
-2. A Script step block appears. Click on it to configure it.
+In the action picker, search for **Script** and select it.
 
-#### Define Input Variables for the Script step
+A Script step block appears on the canvas. Click it to open the configuration panel on the right.
 
-Inside the Script step panel on the right, find the **Input Variables** section.
+#### Define Input Variables
 
-Click **+ Create Variable** for each of the following. For each one, set the **Name** and **Type**, then click the **data pill icon** (looks like a small circle/dot) to map it to a value from the trigger:
+Inside the Script step panel, find **Input Variables**. Click **+ Create Variable** for each row below.
 
-| Variable Name | Type | Map to (data pill) |
+For each variable:
+1. Enter the **Name**
+2. Set the **Type** to `String`
+3. Click the **data pill icon** (circular icon at the right of the value field) to open the data picker
+4. In the data picker, expand **Trigger > Customer Service Case Record** and select the matching field
+
+| Variable Name | Type | Data pill to select |
 |---|---|---|
-| `github_issue_number` | String | Trigger > Customer Service Case Record > `u_github_issue_number` |
-| `case_number` | String | Trigger > Customer Service Case Record > `Number` |
-| `comments_changed` | String | Trigger > Customer Service Case Record > `Additional comments` |
-| `work_notes_changed` | String | Trigger > Customer Service Case Record > `Work notes` |
-
-> To pick the data pill: after setting the Type, click the circular icon at the right end of the value field. A panel opens showing the Trigger record fields. Expand "Customer Service Case Record" and click the field you want.
+| `github_issue_number` | String | Trigger > Customer Service Case Record > **u_github_issue_number** |
+| `case_number` | String | Trigger > Customer Service Case Record > **Number** |
+| `comments_changed` | String | Trigger > Customer Service Case Record > **Additional comments** |
+| `work_notes_changed` | String | Trigger > Customer Service Case Record > **Work notes** |
 
 #### Write the Script
 
-In the **Script** area of the step, paste the following:
+In the **Script** area, paste:
 
 ```javascript
 (function execute(inputs, outputs) {
@@ -166,13 +97,11 @@ In the **Script** area of the step, paste the following:
   var issueNumber = inputs.github_issue_number + '';
   var caseNumber  = inputs.case_number + '';
 
-  // Determine which journal field was updated and get the latest entry
   var noteText = '';
   var noteType = '';
 
-  // getJournalEntry(1) returns the most recent entry added in this update
-  var latestComment  = inputs.comments_changed;
-  var latestWorkNote = inputs.work_notes_changed;
+  var latestComment  = inputs.comments_changed + '';
+  var latestWorkNote = inputs.work_notes_changed + '';
 
   if (latestComment && latestComment.length > 0) {
     noteText = latestComment;
@@ -187,12 +116,14 @@ In the **Script** area of the step, paste the following:
   outputs.note_type    = noteType;
   outputs.case_number  = caseNumber;
   outputs.sn_user      = gs.getUserDisplayName();
-  outputs.should_send  = (issueNumber.length > 0 && noteText.length > 0) ? 'true' : 'false';
+
+  // Only send if there is a GitHub issue linked AND there is actual note content
+  outputs.should_send = (issueNumber.length > 0 && noteText.length > 0) ? 'true' : 'false';
 
 })(inputs, outputs);
 ```
 
-#### Define Output Variables for the Script step
+#### Define Output Variables
 
 In the **Output Variables** section below the script editor, click **+ Create Variable** for each:
 
@@ -205,40 +136,45 @@ In the **Output Variables** section below the script editor, click **+ Create Va
 | `sn_user` | String |
 | `should_send` | String |
 
-Click **Done** on the Script step.
+Click **Done** to close the Script step panel.
 
 ---
 
-### 2.4 Add an If Condition (skip if no GitHub issue linked)
+### 1.4 Add an If Condition — skip if nothing to send
 
 Click the **+** below the Script step.
 
 Select **Flow Logic > If**
 
-Configure the condition:
-- Data pill: click the pill icon, select **Script step > `should_send`**
+Configure:
+- Click the data pill icon next to the condition field
+- Select: **Script step 1 > `should_send`**
 - Operator: `is`
-- Value: `true`
+- Value: type `true`
 
-Click **Done**. This creates a branch. Place the next step inside the **then** branch.
+Click **Done**.
+
+This creates two branches. All remaining steps go inside the **then** branch (the left/true side).
 
 ---
 
-### 2.5 Add a Script Step to Call GitHub
+### 1.5 Add Script Step 2 — Call the GitHub REST Message
 
-Click **+** inside the **then** branch of the If condition.
+Click **+** inside the **then** branch.
 
-Select **Script** again.
+Select **Script**.
 
 #### Input Variables
 
-| Variable Name | Type | Map to (data pill) |
+Map each from the previous Script step's outputs:
+
+| Variable Name | Type | Data pill to select |
 |---|---|---|
-| `issue_number` | String | Previous Script step > `issue_number` |
-| `note_text` | String | Previous Script step > `note_text` |
-| `note_type` | String | Previous Script step > `note_type` |
-| `case_number` | String | Previous Script step > `case_number` |
-| `sn_user` | String | Previous Script step > `sn_user` |
+| `issue_number` | String | Script step 1 > `issue_number` |
+| `note_text` | String | Script step 1 > `note_text` |
+| `note_type` | String | Script step 1 > `note_type` |
+| `case_number` | String | Script step 1 > `case_number` |
+| `sn_user` | String | Script step 1 > `sn_user` |
 
 #### Script
 
@@ -246,7 +182,9 @@ Select **Script** again.
 (function execute(inputs, outputs) {
 
   try {
-    var rm = new sn_ws.RESTMessageV2('GitHub Repository Dispatch', 'dispatch');
+    // 'GitHub Integration' is the REST Message name
+    // 'dispatch' is the HTTP Method name
+    var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch');
 
     rm.setStringParameterNoEscape('issue_number', inputs.issue_number);
     rm.setStringParameterNoEscape('note_text',    inputs.note_text);
@@ -257,38 +195,38 @@ Select **Script** again.
     var response   = rm.execute();
     var httpStatus = response.getStatusCode();
 
-    outputs.status  = httpStatus + '';
-    outputs.success = (httpStatus == 204 || httpStatus == 200) ? 'true' : 'false';
+    outputs.http_status = httpStatus + '';
+    outputs.success     = (httpStatus == 204 || httpStatus == 200) ? 'true' : 'false';
 
     if (outputs.success == 'false') {
-      gs.warn('GitHub dispatch failed. HTTP ' + httpStatus + ' — ' + response.getBody());
+      gs.warn('GitHub dispatch failed. HTTP ' + httpStatus + ' Body: ' + response.getBody());
     }
 
   } catch (ex) {
-    outputs.status  = 'error';
-    outputs.success = 'false';
+    outputs.http_status = 'error';
+    outputs.success     = 'false';
     gs.error('GitHub dispatch exception: ' + ex.message);
   }
 
 })(inputs, outputs);
 ```
 
-> `sn_ws.RESTMessageV2` is the ServiceNow class for calling an Outbound REST Message by name.
-> `setStringParameterNoEscape` fills in the `${variable}` placeholders in the request body without HTML encoding.
-> GitHub's `repository_dispatch` returns HTTP 204 on success.
+> `sn_ws.RESTMessageV2('GitHub Integration', 'dispatch')` — first argument is the REST Message Name, second is the HTTP Method Name.
+> `setStringParameterNoEscape` fills the `${variable}` placeholders in the request body without HTML-encoding the values.
+> GitHub returns HTTP `204` on a successful `repository_dispatch` call.
 
 #### Output Variables
 
 | Variable Name | Type |
 |---|---|
-| `status` | String |
+| `http_status` | String |
 | `success` | String |
 
 Click **Done**.
 
 ---
 
-### 2.6 Save and Activate
+### 1.6 Save and Activate
 
 1. Click **Save** (top right)
 2. Click **Activate**
@@ -299,10 +237,10 @@ The flow is now live.
 
 ## Testing
 
-1. Open any Customer Service Case that has a GitHub issue number in `u_github_issue_number`
-2. Scroll to the **Additional comments (Customer visible)** field
+1. Open any Customer Service Case that has a value in `u_github_issue_number`
+2. Scroll to **Additional comments (Customer visible)**
 3. Type a test message and click **Post**
-4. Go to the linked GitHub issue — the comment should appear within ~30 seconds as:
+4. Go to the linked GitHub issue — the comment should appear within ~30 seconds:
 
 ```
 💬 ServiceNow Comment — Case CS0000001
@@ -315,14 +253,24 @@ Test message here
 
 ---
 
+## Checking execution logs
+
+If the GitHub comment does not appear:
+
+1. Go to: `All > Process Automation > Flow Designer`
+2. Click the **Executions** tab at the top
+3. Find `SN Comment to GitHub` and click the execution row
+4. Expand each step — the Script step 2 output will show the `http_status` returned by GitHub
+
+---
+
 ## Troubleshooting
 
 | Problem | What to check |
 |---|---|
-| Flow does not trigger | Check the condition — make sure `comments changes` OR `work_notes changes` is set correctly |
-| HTTP 401 from GitHub | The PAT in the Authorization header is wrong or expired |
-| HTTP 404 from GitHub | The org/repo in the REST Message endpoint URL is incorrect |
-| `should_send` is false | The case has no value in `u_github_issue_number` — fill that field first |
-| Comment appears blank on GitHub | Check the data pill mapping for `comments_changed` — it must map to the case's Additional comments field |
-
-To see flow execution logs: `All > Process Automation > Flow Designer > Executions` tab.
+| Flow does not trigger | Confirm the trigger condition has `Additional comments changes` OR `Work notes changes` |
+| `should_send` is `false` | The case has no value in `u_github_issue_number` — fill that field on the case |
+| `http_status` is `401` | The Github Basic Auth profile has an expired or wrong PAT — update it in the profile record |
+| `http_status` is `404` | The org/repo in the REST Message Endpoint URL is wrong |
+| `http_status` is `422` | The `sn-comment-to-github.yml` workflow is not deployed to the default branch of that repo |
+| Comment is blank on GitHub | The data pill for `comments_changed` or `work_notes_changed` is mapped to the wrong field |

@@ -13,82 +13,31 @@ GitHub event types sent:
 ## What happens end to end
 
 **On CR created:**
-1. An agent clicks "Create Project Change Request" on a case
-2. ServiceNow creates a `change_request` record with `parent` pointing to the case
-3. Flow A fires because a Change Request record was created
-4. It looks up the parent case to find the GitHub issue number
-5. Calls GitHub API → `sn-cr-notifier.yml` posts a notification on the GitHub issue
+1. Agent clicks "Create Project Change Request" on a case
+2. ServiceNow creates a `change_request` record linked to the case via the `Parent` field
+3. Flow A fires, looks up the parent case, finds the GitHub issue number
+4. Calls GitHub — `sn-cr-notifier.yml` posts a CR created notification on the issue
 
 **On CR state change:**
-1. An agent moves a CR from one state to another (e.g., Assess → Implement)
-2. Flow B fires because the `state` field changed on the Change Request
-3. Same lookup and GitHub call as above, with `action: state_changed`
+1. Agent moves the CR from one state to another (e.g. Assess → Implement)
+2. Flow B fires, same lookup and GitHub call with `action: state_changed`
 
 ---
 
-## Prerequisites
+## Before you start
 
-- ServiceNow admin or Flow Designer author role
-- A GitHub Personal Access Token (PAT) with `repo` scope
-- The case table must have a field `u_github_issue_number` (String)
-- The REST Message `GitHub Repository Dispatch` already created (see `sn-comment-to-github.md` Part 1)
-  If you have not done that yet, complete Part 1 of that guide first before continuing here
+Complete [setup-rest-message.md](setup-rest-message.md) first.
+That guide creates the `GitHub Integration` REST Message with the `dispatch_cr` HTTP Method that both flows use.
 
----
-
-## Part 1 — Add a second HTTP Method to the existing REST Message
-
-You already created the `GitHub Repository Dispatch` REST Message. Now add a second HTTP Method for CR events.
-
-1. Go to: `All > System Web Services > Outbound > REST Messages`
-2. Open **GitHub Repository Dispatch**
-3. Scroll to the **HTTP Methods** related list
-4. Click **New**
-5. Fill in:
-   - **Name**: `dispatch_cr`
-   - **HTTP method**: `POST`
-6. Click **Save**
-
-### Add Headers
-
-Add the same three headers as the `dispatch` method:
-
-| Name | Value |
-|---|---|
-| `Content-Type` | `application/json` |
-| `Accept` | `application/vnd.github+json` |
-| `Authorization` | `Bearer YOUR_GITHUB_PAT` |
-
-### Add Request Body
-
-In the **HTTP Request** tab, paste this in the **Request body** field:
-
-```json
-{"event_type":"servicenow-cr-update","client_payload":{"github_issue_number":"${issue_number}","cr_number":"${cr_number}","cr_sys_id":"${cr_sys_id}","cr_state":"${cr_state}","previous_state":"${previous_state}","cr_environment":"${cr_environment}","case_sys_id":"${case_sys_id}","action":"${action}"}}
-```
-
-### Add Variable Substitutions
-
-Click **New** in the **Variable Substitutions** related list for each:
-
-| Name | Test value |
-|---|---|
-| `issue_number` | `42` |
-| `cr_number` | `CHG0012345` |
-| `cr_sys_id` | `abc123def456abc123def456abc12345` |
-| `cr_state` | `Assess` |
-| `previous_state` | `` (empty) |
-| `cr_environment` | `Production` |
-| `case_sys_id` | `xyz789xyz789xyz789xyz789xyz78901` |
-| `action` | `created` |
-
-Click **Update**.
+Also confirm:
+- The case table has a field `u_github_issue_number` (String)
+- You have Flow Designer author role
 
 ---
 
-## Part 2 — Flow A: CR Created
+## Flow A — CR Created
 
-### 2.1 Open Flow Designer and create the flow
+### A.1 Create the Flow
 
 Go to: `All > Process Automation > Flow Designer`
 
@@ -102,7 +51,7 @@ Click **Submit**.
 
 ---
 
-### 2.2 Set the Trigger
+### A.2 Set the Trigger
 
 Click **Add a trigger**.
 
@@ -111,51 +60,50 @@ Click **Add a trigger**.
 3. Under **Condition**, click **Add Filters**:
    - Field: `Parent` | Operator: `is not empty`
 
-   This ensures the flow only fires for CRs that are linked to a parent case. Unlinked CRs are ignored.
+   This ensures the flow only fires for CRs that are linked to a case. Standalone CRs with no parent are ignored.
 
 Click **Done**.
 
 ---
 
-### 2.3 Look up the parent Case record
+### A.3 Look up the parent Case record
 
-The Change Request record has a `parent` field pointing to the case. You need to look it up to get `u_github_issue_number`.
+The Change Request has a `Parent` field that points to the Customer Service Case.
+You need to look it up to read `u_github_issue_number` from the case.
 
 Click **+** below the trigger.
 
 Search for and select **Look Up Record** (under ServiceNow Core).
 
 Configure it:
-- **Table**: `Customer Service Case [sn_customerservice_case]`
-- **Filters**:
-  - Field: `Sys ID` | Operator: `is` | Value: click the data pill icon → `Trigger > Change Request Record > Parent > Sys ID`
+
+| Field | Value |
+|---|---|
+| **Table** | `Customer Service Case [sn_customerservice_case]` |
+| **Filter field** | `Sys ID` |
+| **Operator** | `is` |
+| **Value** | Click the data pill icon → expand **Trigger > Change Request Record > Parent** → select **Sys ID** |
 
 Click **Done**.
 
-This step outputs a full Case record. In later steps it will appear as **Look Up Record > Customer Service Case Record**.
+This step will output the full Case record. In later steps it appears in the data picker as **Look Up Record > Customer Service Case Record**.
 
 ---
 
-### 2.4 Add a Script step to check and build payload
+### A.4 Add Script Step 1 — Read values and check if linked
 
-Click **+** below the Look Up Record step.
-
-Select **Script**.
+Click **+** below the Look Up Record step. Select **Script**.
 
 #### Input Variables
 
-Click **+ Create Variable** for each:
-
-| Variable Name | Type | Map to (data pill) |
+| Variable Name | Type | Data pill to select |
 |---|---|---|
-| `github_issue_number` | String | Look Up Record > Customer Service Case Record > `u_github_issue_number` |
-| `case_sys_id` | String | Look Up Record > Customer Service Case Record > `Sys ID` |
-| `cr_number` | String | Trigger > Change Request Record > `Number` |
-| `cr_sys_id` | String | Trigger > Change Request Record > `Sys ID` |
-| `cr_state` | String | Trigger > Change Request Record > `State` |
-| `cr_environment` | String | Trigger > Change Request Record > `Environment` |
-
-> If there is no `Environment` field on the Change Request in your instance, use whatever field tracks the environment. If it does not exist, skip that variable and hardcode `'Not specified'` in the script.
+| `github_issue_number` | String | Look Up Record > Customer Service Case Record > **u_github_issue_number** |
+| `case_sys_id` | String | Look Up Record > Customer Service Case Record > **Sys ID** |
+| `cr_number` | String | Trigger > Change Request Record > **Number** |
+| `cr_sys_id` | String | Trigger > Change Request Record > **Sys ID** |
+| `cr_state` | String | Trigger > Change Request Record > **State** |
+| `cr_environment` | String | Trigger > Change Request Record > **Environment** *(skip if the field does not exist on your CR table)* |
 
 #### Script
 
@@ -167,7 +115,7 @@ Click **+ Create Variable** for each:
   var crNumber    = inputs.cr_number + '';
   var crSysId     = inputs.cr_sys_id + '';
   var crState     = inputs.cr_state + '';
-  var crEnv       = inputs.cr_environment + '' || 'Not specified';
+  var crEnv       = (inputs.cr_environment + '') || 'Not specified';
 
   outputs.issue_number   = issueNumber;
   outputs.case_sys_id    = caseId;
@@ -175,7 +123,9 @@ Click **+ Create Variable** for each:
   outputs.cr_sys_id      = crSysId;
   outputs.cr_state       = crState;
   outputs.cr_environment = crEnv;
-  outputs.should_send    = (issueNumber.length > 0 && crNumber.length > 0) ? 'true' : 'false';
+
+  // Only send if the case has a GitHub issue number AND we have a CR number
+  outputs.should_send = (issueNumber.length > 0 && crNumber.length > 0) ? 'true' : 'false';
 
 })(inputs, outputs);
 ```
@@ -196,13 +146,11 @@ Click **Done**.
 
 ---
 
-### 2.5 Add an If Condition
+### A.5 Add an If Condition
 
-Click **+** below the Script step.
+Click **+** below Script Step 1. Select **Flow Logic > If**
 
-Select **Flow Logic > If**
-
-- Data pill: Script step > `should_send`
+- Data pill: Script Step 1 > `should_send`
 - Operator: `is`
 - Value: `true`
 
@@ -210,22 +158,20 @@ Click **Done**. Place the next step inside the **then** branch.
 
 ---
 
-### 2.6 Add a Script step to call GitHub inside the then branch
+### A.6 Add Script Step 2 — Call GitHub inside the then branch
 
-Click **+** inside the **then** branch.
-
-Select **Script**.
+Click **+** inside the **then** branch. Select **Script**.
 
 #### Input Variables
 
-| Variable Name | Type | Map to (data pill) |
+| Variable Name | Type | Data pill to select |
 |---|---|---|
-| `issue_number` | String | Script step (2.4) > `issue_number` |
-| `case_sys_id` | String | Script step (2.4) > `case_sys_id` |
-| `cr_number` | String | Script step (2.4) > `cr_number` |
-| `cr_sys_id` | String | Script step (2.4) > `cr_sys_id` |
-| `cr_state` | String | Script step (2.4) > `cr_state` |
-| `cr_environment` | String | Script step (2.4) > `cr_environment` |
+| `issue_number` | String | Script Step 1 > `issue_number` |
+| `case_sys_id` | String | Script Step 1 > `case_sys_id` |
+| `cr_number` | String | Script Step 1 > `cr_number` |
+| `cr_sys_id` | String | Script Step 1 > `cr_sys_id` |
+| `cr_state` | String | Script Step 1 > `cr_state` |
+| `cr_environment` | String | Script Step 1 > `cr_environment` |
 
 #### Script
 
@@ -233,7 +179,9 @@ Select **Script**.
 (function execute(inputs, outputs) {
 
   try {
-    var rm = new sn_ws.RESTMessageV2('GitHub Repository Dispatch', 'dispatch_cr');
+    // 'GitHub Integration' is the REST Message name
+    // 'dispatch_cr' is the HTTP Method name
+    var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch_cr');
 
     rm.setStringParameterNoEscape('issue_number',   inputs.issue_number);
     rm.setStringParameterNoEscape('cr_number',      inputs.cr_number);
@@ -247,16 +195,16 @@ Select **Script**.
     var response   = rm.execute();
     var httpStatus = response.getStatusCode();
 
-    outputs.status  = httpStatus + '';
-    outputs.success = (httpStatus == 204 || httpStatus == 200) ? 'true' : 'false';
+    outputs.http_status = httpStatus + '';
+    outputs.success     = (httpStatus == 204 || httpStatus == 200) ? 'true' : 'false';
 
     if (outputs.success == 'false') {
-      gs.warn('GitHub CR dispatch failed. HTTP ' + httpStatus + ' — ' + response.getBody());
+      gs.warn('GitHub CR dispatch failed. HTTP ' + httpStatus + ' Body: ' + response.getBody());
     }
 
   } catch (ex) {
-    outputs.status  = 'error';
-    outputs.success = 'false';
+    outputs.http_status = 'error';
+    outputs.success     = 'false';
     gs.error('GitHub CR dispatch exception: ' + ex.message);
   }
 
@@ -267,24 +215,24 @@ Select **Script**.
 
 | Variable Name | Type |
 |---|---|
-| `status` | String |
+| `http_status` | String |
 | `success` | String |
 
 Click **Done**.
 
 ---
 
-### 2.7 Save and Activate Flow A
+### A.7 Save and Activate Flow A
 
 Click **Save**, then **Activate**.
 
 ---
 
-## Part 3 — Flow B: CR State Changed
+## Flow B — CR State Changed
 
-This is a separate flow. It is almost identical to Flow A but uses a different trigger and includes `previous_state`.
+This is a separate flow. The structure is identical to Flow A except the trigger and the `previous_state` field.
 
-### 3.1 Create the flow
+### B.1 Create the Flow
 
 Click **New > Flow**
 
@@ -294,7 +242,7 @@ Click **New > Flow**
 
 ---
 
-### 3.2 Set the Trigger
+### B.2 Set the Trigger
 
 Click **Add a trigger**.
 
@@ -308,41 +256,43 @@ Click **Done**.
 
 ---
 
-### 3.3 Look up the parent Case record
+### B.3 Look up the parent Case record
 
-Same as Step 2.3 — add a **Look Up Record** step:
+Exactly the same as Step A.3:
 
-- **Table**: `Customer Service Case [sn_customerservice_case]`
-- **Filter**: `Sys ID` is `Trigger > Change Request Record > Parent > Sys ID`
+- **Look Up Record** step
+- Table: `Customer Service Case [sn_customerservice_case]`
+- Filter: `Sys ID` is → `Trigger > Change Request Record > Parent > Sys ID`
 
 ---
 
-### 3.4 Add a Script step to build payload
+### B.4 Add Script Step 1 — Read values
 
-Same input variables as Step 2.4, plus one additional:
+Same input variables as A.4, with one additional variable for previous state:
 
-| Variable Name | Type | Map to (data pill) |
+| Variable Name | Type | Data pill to select |
 |---|---|---|
-| `github_issue_number` | String | Look Up Record > Customer Service Case Record > `u_github_issue_number` |
-| `case_sys_id` | String | Look Up Record > Customer Service Case Record > `Sys ID` |
-| `cr_number` | String | Trigger > Change Request Record > `Number` |
-| `cr_sys_id` | String | Trigger > Change Request Record > `Sys ID` |
-| `cr_state` | String | Trigger > Change Request Record > `State` |
-| `cr_previous_state` | String | Trigger > Change Request Record > `State (Previous value)` |
+| `github_issue_number` | String | Look Up Record > Customer Service Case Record > **u_github_issue_number** |
+| `case_sys_id` | String | Look Up Record > Customer Service Case Record > **Sys ID** |
+| `cr_number` | String | Trigger > Change Request Record > **Number** |
+| `cr_sys_id` | String | Trigger > Change Request Record > **Sys ID** |
+| `cr_state` | String | Trigger > Change Request Record > **State** |
+| `cr_previous_state` | String | Trigger > Change Request Record > **State (Previous value)** |
 
-> "State (Previous value)" is available for updated triggers — it shows what the field was before the update. Look for it under the trigger's data pills.
+> "**State (Previous value)**" is available in the data picker for Record Updated triggers.
+> In the data pill panel, expand **Trigger > Change Request Record**, then look for the field with "(Previous value)" suffix.
 
 #### Script
 
 ```javascript
 (function execute(inputs, outputs) {
 
-  var issueNumber    = inputs.github_issue_number + '';
-  var caseId         = inputs.case_sys_id + '';
-  var crNumber       = inputs.cr_number + '';
-  var crSysId        = inputs.cr_sys_id + '';
-  var crState        = inputs.cr_state + '';
-  var previousState  = inputs.cr_previous_state + '';
+  var issueNumber   = inputs.github_issue_number + '';
+  var caseId        = inputs.case_sys_id + '';
+  var crNumber      = inputs.cr_number + '';
+  var crSysId       = inputs.cr_sys_id + '';
+  var crState       = inputs.cr_state + '';
+  var previousState = inputs.cr_previous_state + '';
 
   outputs.issue_number    = issueNumber;
   outputs.case_sys_id     = caseId;
@@ -357,29 +307,35 @@ Same input variables as Step 2.4, plus one additional:
 
 #### Output Variables
 
-Add all the same outputs from 2.4 plus:
+Same as A.4 outputs, replacing `cr_environment` with `previous_state`:
 
 | Variable Name | Type |
 |---|---|
+| `issue_number` | String |
+| `case_sys_id` | String |
+| `cr_number` | String |
+| `cr_sys_id` | String |
+| `cr_state` | String |
 | `previous_state` | String |
+| `should_send` | String |
 
 ---
 
-### 3.5 Add an If Condition
+### B.5 Add an If Condition
 
-Same as Step 2.5 — check `should_send` is `true`.
+Same as A.5 — check `should_send` is `true`.
 
 ---
 
-### 3.6 Add a Script step to call GitHub
+### B.6 Add Script Step 2 — Call GitHub
 
-Same structure as Step 2.6 with this script:
+Same structure as A.6 with this script:
 
 ```javascript
 (function execute(inputs, outputs) {
 
   try {
-    var rm = new sn_ws.RESTMessageV2('GitHub Repository Dispatch', 'dispatch_cr');
+    var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch_cr');
 
     rm.setStringParameterNoEscape('issue_number',   inputs.issue_number);
     rm.setStringParameterNoEscape('cr_number',      inputs.cr_number);
@@ -393,16 +349,16 @@ Same structure as Step 2.6 with this script:
     var response   = rm.execute();
     var httpStatus = response.getStatusCode();
 
-    outputs.status  = httpStatus + '';
-    outputs.success = (httpStatus == 204 || httpStatus == 200) ? 'true' : 'false';
+    outputs.http_status = httpStatus + '';
+    outputs.success     = (httpStatus == 204 || httpStatus == 200) ? 'true' : 'false';
 
     if (outputs.success == 'false') {
-      gs.warn('GitHub CR state dispatch failed. HTTP ' + httpStatus + ' — ' + response.getBody());
+      gs.warn('GitHub CR state dispatch failed. HTTP ' + httpStatus + ' Body: ' + response.getBody());
     }
 
   } catch (ex) {
-    outputs.status  = 'error';
-    outputs.success = 'false';
+    outputs.http_status = 'error';
+    outputs.success     = 'false';
     gs.error('GitHub CR state dispatch exception: ' + ex.message);
   }
 
@@ -411,7 +367,7 @@ Same structure as Step 2.6 with this script:
 
 ---
 
-### 3.7 Save and Activate Flow B
+### B.7 Save and Activate Flow B
 
 Click **Save**, then **Activate**.
 
@@ -419,12 +375,12 @@ Click **Save**, then **Activate**.
 
 ## Testing
 
-### Test Flow A (CR Created)
+### Test Flow A
 
-1. Open a Customer Service Case that has a value in `u_github_issue_number`
-2. Click **Create Project Change Request** (top toolbar)
-3. Fill in required fields and submit
-4. Go to the GitHub issue — within ~30 seconds you should see:
+1. Open a Customer Service Case with a value in `u_github_issue_number`
+2. Click **Create Project Change Request** in the toolbar
+3. Fill in required fields and save the CR
+4. Go to the GitHub issue — within ~30 seconds:
 
 ```
 New Change Request Created
@@ -440,11 +396,11 @@ All Change Requests for this Case (1)
 *Automatically notified by ServiceNow*
 ```
 
-### Test Flow B (State Changed)
+### Test Flow B
 
 1. Open an existing Change Request linked to a case with a GitHub issue
-2. Change the **State** field to a new value and save
-3. Go to the GitHub issue — you should see:
+2. Change the **State** field and save
+3. Go to the GitHub issue:
 
 ```
 Change Request State Updated
@@ -460,13 +416,10 @@ State Change: Assess → Implement
 
 ## Checking execution logs
 
-If the GitHub comment does not appear, check the flow logs:
-
 1. Go to: `All > Process Automation > Flow Designer`
-2. Click the **Executions** tab at the top
-3. Find your flow name and click the execution
-4. Expand each step to see its inputs, outputs, and any errors
-5. The REST call step will show the HTTP status code returned by GitHub
+2. Click the **Executions** tab
+3. Find your flow name and click the execution row
+4. Expand Script Step 2 — the `http_status` output shows what GitHub returned
 
 ---
 
@@ -474,10 +427,11 @@ If the GitHub comment does not appear, check the flow logs:
 
 | Problem | What to check |
 |---|---|
-| Flow does not fire on CR create | Check the trigger table is `change_request` (not `sn_customerservice_case`) and condition has `Parent is not empty` |
-| Look Up Record returns empty | The CR's `parent` field is not set — confirm the CR was created from within the case using the toolbar button |
-| `should_send` is false | The parent case has no value in `u_github_issue_number` — set it on the case |
-| HTTP 401 | PAT expired or wrong — update the Authorization header in the REST Message |
-| HTTP 404 | Wrong org/repo in the REST Message endpoint URL |
-| HTTP 422 | The `event_type` value is not registered in the GitHub Actions workflow — confirm `sn-cr-notifier.yml` is deployed to the default branch |
-| Previous state is empty | In the trigger data pills, look specifically for "State (Previous value)" not "State" |
+| Flow A does not fire | Confirm the trigger is **Record Created** on `change_request`, not Record Updated |
+| Flow B does not fire | Confirm the trigger is **Record Updated** with condition `State changes` |
+| Look Up Record returns no record | The CR's `Parent` field is not set — the CR must be created from within the case using the toolbar button, not created independently |
+| `should_send` is `false` | The parent case has no value in `u_github_issue_number` |
+| `http_status` is `401` | The Github Basic Auth profile has a wrong or expired PAT — update it |
+| `http_status` is `404` | The org/repo in the REST Message Endpoint URL is wrong |
+| `http_status` is `422` | The `sn-cr-notifier.yml` workflow file is not on the default branch |
+| `previous_state` is empty | In the data picker, make sure you selected "State **(Previous value)**" not just "State" |
