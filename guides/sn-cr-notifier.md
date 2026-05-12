@@ -179,18 +179,34 @@ Click **+** inside the **then** branch. Select **Script**.
 (function execute(inputs, outputs) {
 
   try {
-    // 'GitHub Integration' is the REST Message name
-    // 'dispatch_cr' is the HTTP Method name
-    var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch_cr');
+    var configJson = gs.getProperty('github.dispatch.config');
+    if (!configJson) {
+      gs.error('System property github.dispatch.config is missing');
+      outputs.http_status = 'config_missing';
+      outputs.success     = 'false';
+      return;
+    }
 
-    rm.setStringParameterNoEscape('issue_number',   inputs.issue_number);
-    rm.setStringParameterNoEscape('cr_number',      inputs.cr_number);
-    rm.setStringParameterNoEscape('cr_sys_id',      inputs.cr_sys_id);
-    rm.setStringParameterNoEscape('cr_state',       inputs.cr_state);
-    rm.setStringParameterNoEscape('previous_state', '');
-    rm.setStringParameterNoEscape('cr_environment', inputs.cr_environment);
-    rm.setStringParameterNoEscape('case_sys_id',    inputs.case_sys_id);
-    rm.setStringParameterNoEscape('action',         'created');
+    var config   = JSON.parse(configJson);
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
+
+    var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch_cr');
+    rm.setEndpoint(endpoint);
+    rm.setRequestHeader('Authorization', 'token ' + config.token);
+
+    rm.setRequestBody(JSON.stringify({
+      event_type: 'servicenow-cr-update',
+      client_payload: {
+        github_issue_number: inputs.issue_number,
+        cr_number:           inputs.cr_number,
+        cr_sys_id:           inputs.cr_sys_id,
+        cr_state:            inputs.cr_state,
+        previous_state:      '',
+        cr_environment:      inputs.cr_environment,
+        case_sys_id:         inputs.case_sys_id,
+        action:              'created'
+      }
+    }));
 
     var response   = rm.execute();
     var httpStatus = response.getStatusCode();
@@ -335,16 +351,34 @@ Same structure as A.6 with this script:
 (function execute(inputs, outputs) {
 
   try {
-    var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch_cr');
+    var configJson = gs.getProperty('github.dispatch.config');
+    if (!configJson) {
+      gs.error('System property github.dispatch.config is missing');
+      outputs.http_status = 'config_missing';
+      outputs.success     = 'false';
+      return;
+    }
 
-    rm.setStringParameterNoEscape('issue_number',   inputs.issue_number);
-    rm.setStringParameterNoEscape('cr_number',      inputs.cr_number);
-    rm.setStringParameterNoEscape('cr_sys_id',      inputs.cr_sys_id);
-    rm.setStringParameterNoEscape('cr_state',       inputs.cr_state);
-    rm.setStringParameterNoEscape('previous_state', inputs.previous_state);
-    rm.setStringParameterNoEscape('cr_environment', '');
-    rm.setStringParameterNoEscape('case_sys_id',    inputs.case_sys_id);
-    rm.setStringParameterNoEscape('action',         'state_changed');
+    var config   = JSON.parse(configJson);
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
+
+    var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch_cr');
+    rm.setEndpoint(endpoint);
+    rm.setRequestHeader('Authorization', 'token ' + config.token);
+
+    rm.setRequestBody(JSON.stringify({
+      event_type: 'servicenow-cr-update',
+      client_payload: {
+        github_issue_number: inputs.issue_number,
+        cr_number:           inputs.cr_number,
+        cr_sys_id:           inputs.cr_sys_id,
+        cr_state:            inputs.cr_state,
+        previous_state:      inputs.previous_state,
+        cr_environment:      '',
+        case_sys_id:         inputs.case_sys_id,
+        action:              'state_changed'
+      }
+    }));
 
     var response   = rm.execute();
     var httpStatus = response.getStatusCode();

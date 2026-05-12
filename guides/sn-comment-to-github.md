@@ -182,15 +182,36 @@ Map each from the previous Script step's outputs:
 (function execute(inputs, outputs) {
 
   try {
-    // 'GitHub Integration' is the REST Message name
-    // 'dispatch' is the HTTP Method name
+    // Read GitHub config from the system property
+    var configJson = gs.getProperty('github.dispatch.config');
+    if (!configJson) {
+      gs.error('System property github.dispatch.config is missing');
+      outputs.http_status = 'config_missing';
+      outputs.success     = 'false';
+      return;
+    }
+
+    var config = JSON.parse(configJson);
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
+
+    // 'GitHub Integration' = REST Message name, 'dispatch' = HTTP Method name
     var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch');
 
-    rm.setStringParameterNoEscape('issue_number', inputs.issue_number);
-    rm.setStringParameterNoEscape('note_text',    inputs.note_text);
-    rm.setStringParameterNoEscape('note_type',    inputs.note_type);
-    rm.setStringParameterNoEscape('case_number',  inputs.case_number);
-    rm.setStringParameterNoEscape('sn_user',      inputs.sn_user);
+    // Override endpoint and auth using values from the system property
+    rm.setEndpoint(endpoint);
+    rm.setRequestHeader('Authorization', 'token ' + config.token);
+
+    // Set the request body directly — no variable substitutions needed
+    rm.setRequestBody(JSON.stringify({
+      event_type: 'servicenow-note',
+      client_payload: {
+        issue_number: inputs.issue_number,
+        note_text:    inputs.note_text,
+        note_type:    inputs.note_type,
+        case_number:  inputs.case_number,
+        sn_user:      inputs.sn_user
+      }
+    }));
 
     var response   = rm.execute();
     var httpStatus = response.getStatusCode();
@@ -211,8 +232,10 @@ Map each from the previous Script step's outputs:
 })(inputs, outputs);
 ```
 
-> `sn_ws.RESTMessageV2('GitHub Integration', 'dispatch')` — first argument is the REST Message Name, second is the HTTP Method Name.
-> `setStringParameterNoEscape` fills the `${variable}` placeholders in the request body without HTML-encoding the values.
+> `gs.getProperty('github.dispatch.config')` reads the system property and parses the JSON.
+> `rm.setEndpoint()` overrides the placeholder URL on the REST Message with the real owner/repo URL.
+> `rm.setRequestHeader('Authorization', ...)` injects the PAT token as a Bearer/token header.
+> `rm.setRequestBody()` sets the JSON body directly — no `${placeholder}` substitutions needed.
 > GitHub returns HTTP `204` on a successful `repository_dispatch` call.
 
 #### Output Variables
