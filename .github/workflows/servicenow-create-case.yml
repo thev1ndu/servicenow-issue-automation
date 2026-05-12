@@ -28,8 +28,6 @@ on:
         value: ${{ jobs.send.outputs.sn_success }}
 
 env:
-  SERVICENOW_PRODUCT: "WSO2 API Manager 1.10.0 Developer Portal"
-  SERVICENOW_PROJECT: "Customer Portal Customer Project1 - Subscription"
   SERVICENOW_URL: ${{ secrets.SERVICENOW_URL }}
   SERVICENOW_UI_URL: ${{ secrets.SERVICENOW_UI_URL }}
 
@@ -50,6 +48,27 @@ jobs:
       case_sys_id: ${{ steps.send_servicenow.outputs.case_sys_id }}
       sn_success: ${{ steps.send_servicenow.outputs.sn_success }}
     steps:
+      - uses: actions/checkout@v4
+
+      - id: load_config
+        run: |
+          python3 - <<'EOF'
+          import yaml, os
+          with open('.github/servicenow-config.yml') as f:
+              cfg = yaml.safe_load(f)
+          case_cfg    = cfg.get('case', {})
+          project_cfg = cfg.get('project', {})
+          out = open(os.environ['GITHUB_OUTPUT'], 'a')
+          out.write('category='         + case_cfg.get('category', '')         + '\n')
+          out.write('channel='          + case_cfg.get('channel', '')          + '\n')
+          out.write('account='          + case_cfg.get('account', '')          + '\n')
+          out.write('announcement_type='+ case_cfg.get('announcement_type','') + '\n')
+          out.write('project_name='     + project_cfg.get('name', '')          + '\n')
+          out.write('product='          + project_cfg.get('product', '')       + '\n')
+          out.write('wso2_product='     + project_cfg.get('wso2_product', '')  + '\n')
+          out.close()
+          EOF
+
       - id: resolve
         uses: actions/github-script@v8
         with:
@@ -165,12 +184,24 @@ jobs:
           CATALOG_ITEM: ${{ steps.extract_fields.outputs.catalog_item }}
           CASE_TYPE: ${{ steps.extract_fields.outputs.case_type }}
           CATALOG_PREFIX: ${{ steps.resolve.outputs.catalog_prefix }}
+          SN_PROJECT: ${{ steps.load_config.outputs.project_name }}
+          SN_PRODUCT: ${{ steps.load_config.outputs.product }}
+          SN_CATEGORY: ${{ steps.load_config.outputs.category }}
+          SN_CHANNEL: ${{ steps.load_config.outputs.channel }}
+          SN_ACCOUNT: ${{ steps.load_config.outputs.account }}
+          SN_ANNOUNCEMENT_TYPE: ${{ steps.load_config.outputs.announcement_type }}
+          SN_WSO2_PRODUCT: ${{ steps.load_config.outputs.wso2_product }}
         run: |
           FORMATTED_DESCRIPTION=$(echo "$ALL_FIELDS" | jq -r '(to_entries | map("<strong>" + (.key | gsub("^u_";"") | gsub("_";" ") | ascii_upcase) + ":</strong><br/>" + (.value | gsub("\n";"<br/>")) + "<br/><br/>") | join("")) + "<br/><strong>─────────────────────────────────────</strong><br/>"')
           FORMATTED_DESCRIPTION="${FORMATTED_DESCRIPTION}<strong>SOURCE:</strong> GitHub Issue #${ISSUE_NUMBER}<br/><strong>URL:</strong> ${ISSUE_URL}<br/><strong>Repository:</strong> ${{ github.repository }}<br/><strong>User:</strong> ${GITHUB_USER_LOGIN}<br/><strong>Labels:</strong> ${ISSUE_LABELS}<br/>"
           echo "$ALL_FIELDS" | jq \
-            --arg project "${{ env.SERVICENOW_PROJECT }}" \
-            --arg product "${{ env.SERVICENOW_PRODUCT }}" \
+            --arg project           "$SN_PROJECT" \
+            --arg product           "$SN_PRODUCT" \
+            --arg category          "$SN_CATEGORY" \
+            --arg channel           "$SN_CHANNEL" \
+            --arg account           "$SN_ACCOUNT" \
+            --arg announcement_type "$SN_ANNOUNCEMENT_TYPE" \
+            --arg wso2_product      "$SN_WSO2_PRODUCT" \
             --arg title "$ISSUE_TITLE" \
             --arg issue_number "$ISSUE_NUMBER" \
             --arg issue_url "$ISSUE_URL" \
@@ -182,7 +213,7 @@ jobs:
             --arg catalog_item "$CATALOG_ITEM" \
             --arg case_type "$CASE_TYPE" \
             --arg catalog_prefix "$CATALOG_PREFIX" \
-            '. + {project: $project, product: $product, title: $title, issue_number: $issue_number, issue_url: $issue_url, u_github_issue_url: $u_github_issue_url, github_user: $github_user, repository_full_name: $repository_full_name, labels: $labels, description: $description, catalog_item: $catalog_item, case_type: $case_type, catalog_prefix: $catalog_prefix}' > payload.json
+            '. + {project: $project, product: $product, category: $category, channel: $channel, account: $account, announcement_type: $announcement_type, wso2_product: $wso2_product, title: $title, issue_number: $issue_number, issue_url: $issue_url, u_github_issue_url: $u_github_issue_url, github_user: $github_user, repository_full_name: $repository_full_name, labels: $labels, description: $description, catalog_item: $catalog_item, case_type: $case_type, catalog_prefix: $catalog_prefix}' > payload.json
 
       - id: send_servicenow
         if: steps.get_issue.outputs.should_process == 'true'
@@ -220,7 +251,7 @@ jobs:
             try { allFields = JSON.parse(process.env.ALL_FIELDS_JSON || '{}'); } catch (_) {}
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNum,
-              body: `## ✅ ServiceNow Case Created Successfully\n\n**Case Number:** ${caseDisplay}\n\n### Request Details\n- **Catalog:** ${{ steps.extract_fields.outputs.catalog_item }}\n- **Type:** ${{ steps.extract_fields.outputs.case_type }}\n- **Priority:** ${{ steps.extract_fields.outputs.priority }}\n- **Environment:** ${{ steps.extract_fields.outputs.environment }}\n\n### Auto-Mapped\n- **Project:** ${{ env.SERVICENOW_PROJECT }}\n- **Product:** ${{ env.SERVICENOW_PRODUCT }}\n\n---\n*${Object.keys(allFields).length} fields auto-extracted.*\n*Automated via GitHub Actions*`
+              body: `## ✅ ServiceNow Case Created Successfully\n\n**Case Number:** ${caseDisplay}\n\n### Request Details\n- **Catalog:** ${{ steps.extract_fields.outputs.catalog_item }}\n- **Type:** ${{ steps.extract_fields.outputs.case_type }}\n- **Priority:** ${{ steps.extract_fields.outputs.priority }}\n- **Environment:** ${{ steps.extract_fields.outputs.environment }}\n\n### Auto-Mapped\n- **Project:** ${{ steps.load_config.outputs.project_name }}\n- **Product:** ${{ steps.load_config.outputs.product }}\n\n---\n*${Object.keys(allFields).length} fields auto-extracted.*\n*Automated via GitHub Actions*`
             });
 
       - if: failure() && steps.get_issue.outputs.should_process == 'true'

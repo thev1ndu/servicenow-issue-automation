@@ -65,15 +65,20 @@ https://<your-instance>.service-now.com/api/<scope>/github_case/v1/case
     var rawTitle      = (body.title || '').replace(/^\[SR-Change\]:\s*/i, '').trim();
     var title         = body.u_short_description || rawTitle || 'GitHub Issue';
 
-    var description   = body.description || '';
-    var priority      = body.priority || '3 - Moderate';
-    var catalogItem   = body.catalog_item || 'General Requests';
-    var caseType      = body.case_type || 'Service Request';
-    var project       = body.project || '';
-    var product       = body.product || '';
-    var environment   = body.u_project_environment || '';
-    var githubUser    = body.github_user || '';
-    var labels        = body.labels || '';
+    var description       = body.description || '';
+    var priority          = body.priority || '3 - Moderate';
+    var catalogItem       = body.catalog_item || 'General Requests';
+    var caseType          = body.case_type || 'Service Request';
+    var category          = body.category || '';
+    var channel           = body.channel || '';
+    var account           = body.account || '';
+    var announcementType  = body.announcement_type || '';
+    var project           = body.project || '';
+    var product           = body.product || '';
+    var wso2Product       = body.wso2_product || '';
+    var environment       = body.u_project_environment || '';
+    var githubUser        = body.github_user || '';
+    var labels            = body.labels || '';
 
     var affectedComp       = body.u_affected_component || '';
     var affectedSvc        = body.u_affected_services || '';
@@ -133,6 +138,13 @@ https://<your-instance>.service-now.com/api/<scope>/github_case/v1/case
     if (snImpact) gr.impact  = snImpact;
     gr.u_github_issue_number = issueNumber;
     gr.u_github_issue_url    = issueUrl;
+
+    // Constants from .github/servicenow-config.yml
+    if (category) gr.category = category;
+    if (channel)  gr.channel  = channel;
+    if (account && gr.isValidField('account')) gr.account.setDisplayValue(account);
+    if (announcementType && gr.isValidField('announcement_type')) gr.announcement_type = announcementType;
+    if (wso2Product && gr.isValidField('u_wso2_product')) gr.u_wso2_product = wso2Product;
 
     if (gr.isValidField('u_catalog_item'))                gr.u_catalog_item                = catalogItem;
     if (gr.isValidField('u_case_type'))                   gr.u_case_type                   = caseType;

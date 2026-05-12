@@ -65,15 +65,20 @@ https://<your-instance>.service-now.com/api/<scope>/github_case/v1
     var rawTitle      = (body.title || '').replace(/^\[SR-Change\]:\s*/i, '').trim();
     var title         = body.u_short_description || rawTitle || 'GitHub Issue';
 
-    var description   = body.description || '';
-    var priority      = body.priority || '3 - Moderate';
-    var catalogItem   = body.catalog_item || 'General Requests';
-    var caseType      = body.case_type || 'Service Request';
-    var project       = body.project || '';
-    var product       = body.product || '';
-    var environment   = body.u_project_environment || '';
-    var githubUser    = body.github_user || '';
-    var labels        = body.labels || '';
+    var description       = body.description || '';
+    var priority          = body.priority || '3 - Moderate';
+    var catalogItem       = body.catalog_item || 'General Requests';
+    var caseType          = body.case_type || 'Service Request';
+    var category          = body.category || '';
+    var channel           = body.channel || '';
+    var account           = body.account || '';
+    var announcementType  = body.announcement_type || '';
+    var project           = body.project || '';
+    var product           = body.product || '';
+    var wso2Product       = body.wso2_product || '';
+    var environment       = body.u_project_environment || '';
+    var githubUser        = body.github_user || '';
+    var labels            = body.labels || '';
 
     var affectedComp       = body.u_affected_component || '';
     var affectedSvc        = body.u_affected_services || '';
@@ -134,6 +139,13 @@ https://<your-instance>.service-now.com/api/<scope>/github_case/v1
     gr.u_github_issue_number = issueNumber;
     gr.u_github_issue_url    = issueUrl;
 
+    // Constants from .github/servicenow-config.yml
+    if (category) gr.category = category;
+    if (channel)  gr.channel  = channel;
+    if (account && gr.isValidField('account')) gr.account.setDisplayValue(account);
+    if (announcementType && gr.isValidField('announcement_type')) gr.announcement_type = announcementType;
+    if (wso2Product && gr.isValidField('u_wso2_product')) gr.u_wso2_product = wso2Product;
+
     if (gr.isValidField('u_catalog_item'))                gr.u_catalog_item                = catalogItem;
     if (gr.isValidField('u_case_type'))                   gr.u_case_type                   = caseType;
     if (gr.isValidField('u_project'))                     gr.u_project                     = project;
@@ -193,13 +205,20 @@ The `<scope>` part is shown in the API's **API ID** field as a namespaced path (
 
 This table shows what the GitHub workflow sends and how each key maps to a Case field:
 
-| Payload key | ServiceNow field | Notes |
-|-------------|-----------------|-------|
-| `u_short_description` | `short_description` | Content of `### Short Description` in issue body |
-| `title` | `short_description` (fallback) | GitHub issue title stripped of `[SR-Change]:` prefix |
-| `description` | `description` | HTML-formatted dump of all extracted issue fields |
-| `priority` | `priority` | Mapped: Critical→1, High→2, Moderate→3, Low→4 |
-| `u_impact` | `impact` (integer) + `u_impact` | Mapped: High→1, Medium→2, Low→3 |
+| Payload key | ServiceNow field | Source |
+|-------------|-----------------|--------|
+| `u_short_description` | `short_description` | `### Short Description` section in issue body |
+| `title` | `short_description` (fallback) | GitHub issue title, `[SR-Change]:` prefix stripped |
+| `description` | `description` | HTML-formatted dump of all extracted issue fields + source footer |
+| `priority` | `priority` | Issue body; mapped Critical→1, High→2, Moderate→3, Low→4 |
+| `u_impact` | `impact` (integer) + `u_impact` | Issue body; mapped High→1, Medium→2, Low→3 |
+| `category` | `category` | **`servicenow-config.yml`** → `case.category` |
+| `channel` | `channel` | **`servicenow-config.yml`** → `case.channel` |
+| `account` | `account` (reference, by display name) | **`servicenow-config.yml`** → `case.account` |
+| `announcement_type` | `announcement_type` | **`servicenow-config.yml`** → `case.announcement_type` |
+| `project` | `u_project` | **`servicenow-config.yml`** → `project.name` |
+| `product` | `u_product` | **`servicenow-config.yml`** → `project.product` |
+| `wso2_product` | `u_wso2_product` | **`servicenow-config.yml`** → `project.wso2_product` |
 | `u_impact_description_overall` | `u_impact_description_overall` | If field exists on table |
 | `u_impact_description_customer` | `u_impact_description_customer` | If field exists on table |
 | `u_project_environment` | `u_project_environment` | If field exists on table |

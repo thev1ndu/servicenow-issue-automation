@@ -1,0 +1,15 @@
+# ServiceNow constants applied to every Case created from a GitHub issue.
+# Edit these values to match your ServiceNow instance — then commit.
+# The workflow reads this file automatically; no secrets or Actions variables needed.
+
+case:
+  category: "Issue"                                   # Case Category dropdown
+  channel: "Web"                                      # Channel dropdown
+  account: "Customer Portal Customer Account1"        # Account reference field (display name)
+  case_type: "Service Request"                        # Case Type dropdown
+  announcement_type: "General"                        # Announcement Type dropdown
+
+project:
+  name: "Customer Portal Customer Project1 - Subscription"   # Project reference field
+  product: "WSO2 API Manager 1.10.0 Developer Portal"        # Product reference field
+  wso2_product: "WSO2 API Manager Analytics"                 # WSO2 Product reference field
