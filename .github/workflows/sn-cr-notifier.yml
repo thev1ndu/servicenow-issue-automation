@@ -93,11 +93,11 @@ jobs:
               ).join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `💬 **ServiceNow Change Request — Created #${crNumber}**\n\n> **CR:** [${crNumber}](${crUrl}) · **State:** ${crState}${cwBlock}\n> 🕐 **Notified:** ${timestamp}\n${metaLine}\n**All Change Requests for this Case (${allCRs.length})**\n${crListMarkdown}\n\n---\n*Automatically notified by ServiceNow*`
+                body: `💬 **ServiceNow Change Request — Created [#${crNumber}](${crUrl})**\n\n> **State:** ${crState}${cwBlock}\n> 🕐 **Notified:** ${timestamp}\n${metaLine}\n**All Change Requests for this Case (${allCRs.length})**\n${crListMarkdown}\n\n---\n*Automatically notified by ServiceNow*`
               });
             } else if (action === 'state_changed') {
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `💬 **ServiceNow Change Request — Updated #${crNumber}**\n\n> **CR:** [${crNumber}](${crUrl}) · ${previousState} → **${crState}**${assignedTo ? `\n> **Assigned To:** ${assignedTo}` : ''}${cwBlock}\n> 🕐 **Notified:** ${timestamp}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
+                body: `💬 **ServiceNow Change Request — Updated [#${crNumber}](${crUrl})**\n\n> ${previousState} → **${crState}**${assignedTo ? `\n> **Assigned To:** ${assignedTo}` : ''}${cwBlock}\n> 🕐 **Notified:** ${timestamp}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
               });
             }

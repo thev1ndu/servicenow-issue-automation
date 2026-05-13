@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/github-script@v8
+        env:
+          SERVICENOW_UI_URL: ${{ secrets.SERVICENOW_UI_URL }}
         with:
           script: |
             const p = context.payload.client_payload || {};
@@ -21,6 +23,7 @@ jobs:
             const noteText = p.note_text || '';
             const noteType = p.note_type || 'additional_comments';
             const caseNumber = p.case_number || '';
+            const caseSysId = p.case_sys_id || '';
             const snUser = p.sn_user || 'ServiceNow Agent';
             if (!issueNumber || !noteText) {
               core.warning('Missing issue_number or note_text — skipping');
@@ -30,10 +33,16 @@ jobs:
               core.info('Note originated from GitHub — skipping to prevent echo loop');
               return;
             }
+            const snUiUrl = process.env.SERVICENOW_UI_URL || '';
+            const caseUrl = caseSysId && snUiUrl
+              ? `${snUiUrl}/now/nav/ui/classic/params/target/sn_customerservice_case.do?sys_id=${caseSysId}&sysparm_view=wso2_cs_generic`
+              : '';
             const label = noteType === 'work_notes' ? '📋 **ServiceNow Work Note**'
                         : noteType === 'update' ? '💬 **ServiceNow Update**'
                         : '💬 **ServiceNow Comment**';
-            const caseRef = caseNumber ? ` — Case ${caseNumber}` : '';
+            const caseRef = caseNumber
+              ? (caseUrl ? ` — Case [${caseNumber}](${caseUrl})` : ` — Case ${caseNumber}`)
+              : '';
             const newlineIndex = noteText.indexOf('\n');
             const metaLine  = newlineIndex !== -1 ? noteText.slice(0, newlineIndex).trim() : '';
             const bodyText  = newlineIndex !== -1 ? noteText.slice(newlineIndex + 1).trim() : noteText;

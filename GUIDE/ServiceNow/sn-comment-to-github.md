@@ -108,6 +108,7 @@ In the **Script** area, paste:
   outputs.note_text    = commentText;
   outputs.note_type    = 'additional_comments';
   outputs.case_number  = caseNumber;
+  outputs.case_sys_id  = caseSysId;
   outputs.sn_user      = gs.getUserDisplayName();
 
   // Only send if the case has a GitHub issue linked AND a comment was actually posted
@@ -129,6 +130,7 @@ In the **Output Variables** section below the script editor, click **+ Create Va
 | `note_text` | String |
 | `note_type` | String |
 | `case_number` | String |
+| `case_sys_id` | String |
 | `sn_user` | String |
 | `should_send` | String |
 
@@ -170,6 +172,7 @@ Map each from the previous Script step's outputs:
 | `note_text` | String | Script step 1 > `note_text` |
 | `note_type` | String | Script step 1 > `note_type` |
 | `case_number` | String | Script step 1 > `case_number` |
+| `case_sys_id` | String | Script step 1 > `case_sys_id` |
 | `sn_user` | String | Script step 1 > `sn_user` |
 
 #### Script
@@ -205,6 +208,7 @@ Map each from the previous Script step's outputs:
         note_text:    inputs.note_text,
         note_type:    inputs.note_type,
         case_number:  inputs.case_number,
+        case_sys_id:  inputs.case_sys_id,
         sn_user:      inputs.sn_user
       }
     }));

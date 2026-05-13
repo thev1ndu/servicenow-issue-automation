@@ -247,7 +247,12 @@ jobs:
             const issueNumber = parseInt('${{ needs.gate.outputs.issue_number }}', 10);
             const caseNumber = `${{ needs.create-case.outputs.case_number }}`;
             const caseSysId = `${{ needs.create-case.outputs.case_sys_id }}`;
+            const snUiUrl = process.env.SERVICENOW_UI_URL || '';
+            const caseUrl = caseSysId && snUiUrl
+              ? `${snUiUrl}/now/nav/ui/classic/params/target/sn_customerservice_case.do?sys_id=${caseSysId}&sysparm_view=wso2_cs_generic`
+              : '';
+            const caseDisplay = caseUrl ? `[${caseNumber}](${caseUrl})` : `**${caseNumber || 'created'}**`;
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
-              body: `👀 **Watching for Change Requests**\n\n> ServiceNow case **${caseNumber || 'created'}** is monitored for CRs.\n\n---\n*GitHub Actions*`
+              body: `👀 **Watching for Change Requests**\n\n> ServiceNow case ${caseDisplay} is monitored for CRs.\n\n---\n*GitHub Actions*`
             });
