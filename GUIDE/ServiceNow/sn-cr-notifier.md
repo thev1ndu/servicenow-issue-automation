@@ -103,22 +103,29 @@ Click **+** below the Look Up Record step. Select **Script**.
 | `cr_number` | String | Trigger > Change Request Record > **Number** |
 | `cr_sys_id` | String | Trigger > Change Request Record > **Sys ID** |
 | `cr_state` | String | Trigger > Change Request Record > **State** |
+| `cr_planned_start` | String | Trigger > Change Request Record > **Planned start date** |
+| `cr_planned_end` | String | Trigger > Change Request Record > **Planned end date** |
 
 #### Script
 
 ```javascript
 (function execute(inputs, outputs) {
 
-  var issueNumber = inputs.github_issue_number + '';
-  var caseId      = inputs.case_sys_id + '';
-  var crNumber    = inputs.cr_number + '';
-  var crSysId     = inputs.cr_sys_id + '';
-  var crState     = inputs.cr_state + '';
+  var issueNumber   = inputs.github_issue_number + '';
+  var caseId        = inputs.case_sys_id + '';
+  var crNumber      = inputs.cr_number + '';
+  var crSysId       = inputs.cr_sys_id + '';
+  var crState       = inputs.cr_state + '';
+  var plannedStart  = inputs.cr_planned_start + '';
+  var plannedEnd    = inputs.cr_planned_end + '';
+
   outputs.issue_number   = issueNumber;
   outputs.case_sys_id    = caseId;
   outputs.cr_number      = crNumber;
   outputs.cr_sys_id      = crSysId;
   outputs.cr_state       = crState;
+  outputs.planned_start  = plannedStart;
+  outputs.planned_end    = plannedEnd;
 
   // Only send if the case has a GitHub issue number AND we have a CR number
   outputs.should_send = (issueNumber.length > 0 && crNumber.length > 0) ? 'true' : 'false';
@@ -135,6 +142,8 @@ Click **+** below the Look Up Record step. Select **Script**.
 | `cr_number` | String |
 | `cr_sys_id` | String |
 | `cr_state` | String |
+| `planned_start` | String |
+| `planned_end` | String |
 | `should_send` | String |
 
 Click **Done**.
@@ -166,6 +175,8 @@ Click **+** inside the **then** branch. Select **Script**.
 | `cr_number` | String | Script Step 1 > `cr_number` |
 | `cr_sys_id` | String | Script Step 1 > `cr_sys_id` |
 | `cr_state` | String | Script Step 1 > `cr_state` |
+| `planned_start` | String | Script Step 1 > `planned_start` |
+| `planned_end` | String | Script Step 1 > `planned_end` |
 
 #### Script
 
@@ -197,6 +208,8 @@ Click **+** inside the **then** branch. Select **Script**.
         cr_state:            inputs.cr_state,
         previous_state:      '',
         case_sys_id:         inputs.case_sys_id,
+        planned_start:       inputs.planned_start,
+        planned_end:         inputs.planned_end,
         action:              'created'
       }
     }));
@@ -288,18 +301,22 @@ Same input variables as A.4, plus `cr_assigned_to`. Previous state is not availa
 | `cr_sys_id` | String | Trigger > Change Request Record > **Sys ID** |
 | `cr_state` | String | Trigger > Change Request Record > **State** |
 | `cr_assigned_to` | String | Trigger > Change Request Record > **Assigned to** > **Name** |
+| `cr_planned_start` | String | Trigger > Change Request Record > **Planned start date** |
+| `cr_planned_end` | String | Trigger > Change Request Record > **Planned end date** |
 
 #### Script
 
 ```javascript
 (function execute(inputs, outputs) {
 
-  var issueNumber = inputs.github_issue_number + '';
-  var caseId      = inputs.case_sys_id + '';
-  var crNumber    = inputs.cr_number + '';
-  var crSysId     = inputs.cr_sys_id + '';
-  var crState     = inputs.cr_state + '';
-  var assignedTo  = inputs.cr_assigned_to + '';
+  var issueNumber  = inputs.github_issue_number + '';
+  var caseId       = inputs.case_sys_id + '';
+  var crNumber     = inputs.cr_number + '';
+  var crSysId      = inputs.cr_sys_id + '';
+  var crState      = inputs.cr_state + '';
+  var assignedTo   = inputs.cr_assigned_to + '';
+  var plannedStart = inputs.cr_planned_start + '';
+  var plannedEnd   = inputs.cr_planned_end + '';
 
   // Flow Designer does not expose previous field values as data pills.
   // Read the previous state from the audit log instead.
@@ -322,6 +339,8 @@ Same input variables as A.4, plus `cr_assigned_to`. Previous state is not availa
   outputs.cr_state       = crState;
   outputs.previous_state = previousState;
   outputs.assigned_to    = assignedTo;
+  outputs.planned_start  = plannedStart;
+  outputs.planned_end    = plannedEnd;
   outputs.should_send    = (issueNumber.length > 0 && crNumber.length > 0) ? 'true' : 'false';
 
 })(inputs, outputs);
@@ -338,6 +357,8 @@ Same input variables as A.4, plus `cr_assigned_to`. Previous state is not availa
 | `cr_state` | String |
 | `previous_state` | String |
 | `assigned_to` | String |
+| `planned_start` | String |
+| `planned_end` | String |
 | `should_send` | String |
 
 ---
@@ -350,7 +371,21 @@ Same as A.5 — check `should_send` is `true`.
 
 ### B.6 Add Script Step 2 — Call GitHub
 
-Same structure as A.6 with this script:
+Same structure as A.6. Input variables from Script Step 1:
+
+| Variable Name | Type | Source |
+|---|---|---|
+| `issue_number` | String | Script Step 1 > `issue_number` |
+| `case_sys_id` | String | Script Step 1 > `case_sys_id` |
+| `cr_number` | String | Script Step 1 > `cr_number` |
+| `cr_sys_id` | String | Script Step 1 > `cr_sys_id` |
+| `cr_state` | String | Script Step 1 > `cr_state` |
+| `previous_state` | String | Script Step 1 > `previous_state` |
+| `assigned_to` | String | Script Step 1 > `assigned_to` |
+| `planned_start` | String | Script Step 1 > `planned_start` |
+| `planned_end` | String | Script Step 1 > `planned_end` |
+
+Script:
 
 ```javascript
 (function execute(inputs, outputs) {
@@ -381,6 +416,8 @@ Same structure as A.6 with this script:
         previous_state:      inputs.previous_state,
         assigned_to:         inputs.assigned_to,
         case_sys_id:         inputs.case_sys_id,
+        planned_start:       inputs.planned_start,
+        planned_end:         inputs.planned_end,
         action:              'state_changed'
       }
     }));

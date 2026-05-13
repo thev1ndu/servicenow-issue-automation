@@ -49,6 +49,16 @@ jobs:
             const crUrl = crSysId ? `${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${crSysId}` : `#`;
             const now = new Date();
             const timestamp = now.toUTCString().replace('GMT', 'UTC');
+            const formatSNDate = s => {
+              if (!s || s === 'null') return '';
+              const d = new Date(s.replace(' ', 'T') + 'Z');
+              return isNaN(d.getTime()) ? s : d.toUTCString().replace('GMT', 'UTC');
+            };
+            const plannedStart = formatSNDate(p.planned_start);
+            const plannedEnd   = formatSNDate(p.planned_end);
+            const cwBlock = (crState === 'Scheduled' && (plannedStart || plannedEnd))
+              ? `\n> ⏰ **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}`
+              : '';
             if (!issueNumber || !crNumber || !action) {
               core.warning('Missing github_issue_number, cr_number, or action — skipping');
               return;
@@ -83,11 +93,11 @@ jobs:
               ).join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `New Change Request Created\n\n**CR Number:** [${crNumber}](${crUrl})\n**State:** ${crState}\n**Time:** ${timestamp}${metaLine}\nAll Change Requests for this Case (${allCRs.length})\n${crListMarkdown}\n\n---\n*Automatically notified by ServiceNow*`
+                body: `💬 **ServiceNow Change Request — Created #${crNumber}**\n\n> **CR:** [${crNumber}](${crUrl}) · **State:** ${crState}${cwBlock}\n> 🕐 **Notified:** ${timestamp}\n${metaLine}\n**All Change Requests for this Case (${allCRs.length})**\n${crListMarkdown}\n\n---\n*Automatically notified by ServiceNow*`
               });
             } else if (action === 'state_changed') {
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `Change Request State Updated\n\n**CR Number:** [${crNumber}](${crUrl})\n**State Change:** ${previousState} → **${crState}**${assignedTo ? `\n**Assigned to:** ${assignedTo}` : ''}\n**Time:** ${timestamp}${metaLine}\n\n---\n*Automatically notified by ServiceNow*`
+                body: `💬 **ServiceNow Change Request — Updated #${crNumber}**\n\n> **CR:** [${crNumber}](${crUrl}) · ${previousState} → **${crState}**${assignedTo ? `\n> **Assigned To:** ${assignedTo}` : ''}${cwBlock}\n> 🕐 **Notified:** ${timestamp}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
               });
             }
