@@ -44,7 +44,7 @@ jobs:
             const caseSysId = p.case_sys_id || '';
             const action = p.action;
             const previousState = resolveState(p.previous_state || '');
-            const assignedTo = p.assigned_to || '';
+            const assignedTo = (p.assigned_to && p.assigned_to !== 'null') ? p.assigned_to : '';
             const servicenowUiUrl = process.env.SERVICENOW_UI_URL;
             const crUrl = crSysId ? `${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${crSysId}` : `#`;
             const now = new Date();
@@ -88,6 +88,6 @@ jobs:
             } else if (action === 'state_changed') {
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `Change Request State Updated\n\n**CR Number:** [${crNumber}](${crUrl})\n**State Change:** ${previousState} → **${crState}**${assignedTo ? `\n**Assigned To:** ${assignedTo}` : ''}\n**Time:** ${timestamp}${metaLine}\n\n---\n*Automatically notified by ServiceNow*`
+                body: `Change Request State Updated\n\n**CR Number:** [${crNumber}](${crUrl})\n**State Change:** ${previousState} → **${crState}**${assignedTo ? `\n**Assigned to:** ${assignedTo}` : ''}\n**Time:** ${timestamp}${metaLine}\n\n---\n*Automatically notified by ServiceNow*`
               });
             }
