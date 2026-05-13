@@ -1,322 +1,243 @@
-# ServiceNow Implementation
+# GitHub Actions Implementation
 
-This document covers every component built inside ServiceNow to support the GitHub integration. Nothing here touches GitHub — all of it lives in your ServiceNow instance.
-
----
-
-## What Was Built
-
-| Component | Type | Purpose |
-|-----------|------|---------|
-| `u_github_issue_number` | Custom column on `sn_customerservice_case` | Stores GitHub issue number; used as idempotency key for inbound case creation |
-| `u_github_issue_url` | Custom column on `sn_customerservice_case` | Stores full GitHub issue URL for traceability |
-| `github.dispatch.config` | System property | Holds the GitHub PAT, org owner, and repo name used by outbound dispatch calls |
-| `GitHub Case Integration` | Scripted REST API | Receives `POST /case` (create) and `PATCH /case` (update) calls from GitHub Actions |
-| `GitHubRepositoryDispatch` | Script Include | Reusable HTTP client that sends `repository_dispatch` events to GitHub |
-| `Notify GitHub on CR created` | Business Rule | Fires on CR insert; sends `servicenow-cr-update` event to GitHub |
-| `Notify GitHub on CR state change` | Business Rule | Fires on CR state field change; sends `servicenow-cr-update` event to GitHub |
+This document covers every file introduced on the GitHub side: workflows, issue templates, label definitions, and configuration files. Nothing here touches ServiceNow directly — GitHub Actions calls the ServiceNow Scripted REST API and receives events via `repository_dispatch`.
 
 ---
 
-## Step 1 — Custom Columns on `sn_customerservice_case`
+## Repository Files Introduced
 
-These two columns are the link between a ServiceNow Case and the GitHub issue that created it. Every inbound lookup and outbound notification depends on `u_github_issue_number`.
-
-**Navigation:** System Definition → Tables → search `sn_customerservice_case` → Columns tab → New
-
-| Setting | Column 1 | Column 2 |
-|---------|----------|----------|
-| Column label | GitHub Issue Number | GitHub Issue URL |
-| Column name | `u_github_issue_number` | `u_github_issue_url` |
-| Type | String (length 20) | URL |
-
-Issue numbers are stored as strings to avoid integer-casting edge cases in GlideRecord queries.
+| Path | Type | Purpose |
+|------|------|---------|
+| `.github/workflows/issue-servicenow.yml` | Workflow | Validates issues and orchestrates case creation |
+| `.github/workflows/servicenow-create-case.yml` | Reusable workflow | Builds the payload and POSTs to ServiceNow |
+| `.github/workflows/servicenow-update-case.yml` | Reusable workflow | PATCHes the case when an issue is edited |
+| `.github/workflows/servicenow-inbound.yml` | Workflow | Handles `validation-passed` repository_dispatch events |
+| `.github/workflows/sn-cr-notifier.yml` | Workflow | Handles `servicenow-cr-update` events from ServiceNow |
+| `.github/workflows/github-comment-to-sn.yml` | Workflow | Syncs human GitHub comments to the ServiceNow case |
+| `.github/workflows/sn-comment-to-github.yml` | Workflow | Handles `servicenow-note` events from ServiceNow |
+| `.github/ISSUE_TEMPLATE/sr-generic.md` | Issue template | SR Generic Requests — full 14-field form |
+| `.github/ISSUE_TEMPLATE/sr-request-logs.md` | Issue template | SR Request Logs — log requests, Critical priority only |
+| `.github/ISSUE_TEMPLATE/sr-standard-generic.md` | Issue template | SR Standard Generic — simplified 5-field form |
+| `.github/ISSUE_TEMPLATE/sr-information.md` | Issue template | SR Information — minimal 3-field form |
+| `.github/ISSUE_TEMPLATE/config.yml` | Template config | Disables blank issue creation |
+| `.github/labels.yml` | Label definitions | Defines all `SRType/*`, `CatalogueItem/*`, and `validation-passed` labels |
+| `.github/servicenow-config.yml` | Static config | ServiceNow constants applied to every case (account, project, product, etc.) |
 
 ---
 
-## Step 2 — System Property `github.dispatch.config`
+## GitHub Secrets Required
 
-This property is read by the `GitHubRepositoryDispatch` Script Include every time ServiceNow sends an event to GitHub. It centralises credentials so they are not hardcoded in Business Rules.
+These four secrets must be configured in the repository before any workflow can run:
 
-**Navigation:** System Definition → System Properties → New
+| Secret | Value |
+|--------|-------|
+| `SERVICENOW_URL` | Full Scripted REST endpoint: `https://<instance>.service-now.com/api/<scope>/github_case/v1/case` |
+| `SERVICENOW_UI_URL` | Base instance URL: `https://<instance>.service-now.com` — used to build clickable case and CR links |
+| `SERVICENOW_USERNAME` | ServiceNow user with REST API access |
+| `SERVICENOW_PASSWORD` | Password for the above user |
 
-| Field | Value |
-|-------|-------|
-| Name | `github.dispatch.config` |
-| Type | `String` (or `Password` to encrypt at rest) |
-| Description | GitHub PAT + owner + repo for repository_dispatch calls |
+---
 
-**Value** (replace with real values):
+## Labels
 
-```json
-{
-  "token": "github_pat_xxxxx",
-  "owner": "your-github-org-or-user",
-  "repo": "your-repo-name"
-}
+Labels drive the validation and routing logic. They are defined in `.github/labels.yml` and must exist in the repository before workflows run.
+
+| Label | Colour | Role |
+|-------|--------|------|
+| `SRType/Normal Change` | Blue | Identifies the SR change type |
+| `SRType/Standard Change` | Blue | Identifies the SR change type |
+| `SRType/Emergency Change` | Red | Identifies the SR change type (high priority) |
+| `CatalogueItem/Generic Requests` | Yellow | Selects the Generic Requests validation ruleset |
+| `CatalogueItem/Request Logs` | Yellow | Selects the Request Logs validation ruleset |
+| `CatalogueItem/Standard Generic` | Yellow | Selects the Standard Generic validation ruleset |
+| `CatalogueItem/Information` | Yellow | Selects the Information validation ruleset |
+| `validation-passed` | Green | Added by automation after successful validation |
+
+The main workflow reads `SRType/*` and `CatalogueItem/*` labels from the issue to determine which field-validation ruleset to apply. Exactly one label from each group must be present.
+
+---
+
+## Static Config: `.github/servicenow-config.yml`
+
+This YAML file holds ServiceNow constants that are applied to **every** case created from GitHub. Edit once, commit — no secrets or repository variables needed.
+
+```yaml
+case:
+  category: "Issue"
+  account: "Your Account Name"
+  announcement_type: "General"
+
+project:
+  name: "Your Project Name"
+  product: "Your Product Name"
+  wso2_product: "Your WSO2 Product Name"
 ```
 
-| Key | What to put |
-|-----|-------------|
-| `token` | GitHub Personal Access Token — fine-grained: **Contents: Read and write** on the repo; classic: `repo` scope |
-| `owner` | GitHub organisation name or username (the segment before `/` in the repo URL) |
-| `repo` | Repository name (the segment after `/` in the repo URL) |
-
-The Script Include reads this property with `gs.getProperty('github.dispatch.config', '{}')` and parses it as JSON. If the JSON is malformed, a `gs.error` is logged and the dispatch is aborted.
+All values must **exactly** match the display names of the corresponding records in ServiceNow. For reference fields (`account`, `project`, `product`, `wso2_product`), a name mismatch causes ServiceNow to silently leave the field blank — no error is returned.
 
 ---
 
-## Step 3 — Scripted REST API: `GitHub Case Integration`
+## Issue Templates
 
-GitHub Actions sends all inbound case operations to this API. It exposes two resources under the base path `/api/<scope>/github_case/v1`.
+Four templates are provided under `.github/ISSUE_TEMPLATE/`. `config.yml` disables blank issues so users must always pick a template.
 
-**Navigation:** System Web Services → Scripted REST APIs → New
+### `sr-generic.md` — SR Generic Requests
 
-| Field | Value |
-|-------|-------|
-| Name | `GitHub Case Integration` |
-| API ID | `github_case` |
-| Description | Receives GitHub issue payloads and creates/updates Cases |
+The most comprehensive form. Validation requires all 14 sections to be filled in.
 
-After saving, open the **Versions** tab and confirm the version is `v1`.
+Required sections: Short Description, Description, Priority, Impact, Impact Description (Overall), Impact Description (Customer), Environment Details, Affected Component, Affected Services, Service Outage/Downtime, Is a maintenance window required, Implementation Plan, Test Plan, Monitoring Checks.
 
-### 3.1 POST `/case` — Create Case
+### `sr-request-logs.md` — SR Request Logs
 
-Receives the full issue payload from GitHub Actions and creates a Case on `sn_customerservice_case`.
+For log retrieval requests. Validation additionally enforces that Priority is set to `Critical`.
 
-**Resource settings:**
+Required sections: Short Description, Description, Priority, Impact, Impact Description, Customer Project, Environment Details.
 
-| Field | Value |
-|-------|-------|
-| Name | `Create Case` |
-| HTTP Method | `POST` |
-| Relative path | `/case` |
+### `sr-standard-generic.md` — SR Standard Generic
 
-**Key behaviours in the script:**
+A lighter form for routine requests.
 
-- **Idempotency** — If a case with the same `u_github_issue_number` already exists the script returns the existing case (`200 OK`) without creating a duplicate.
-- **Priority mapping** — `Critical → 1`, `High → 2`, `Moderate → 3`, `Low → 4`
-- **Impact mapping** — `High → 1`, `Medium → 2`, `Low → 3`
-- **Reference fields** — `account`, `project`, `product`, `u_wso2_product`, `u_case_type` are resolved by display name via `setDisplayValue`. If the display name does not exactly match a record in ServiceNow the field is silently left blank.
-- **`category`** — An integer choice field resolved via `setDisplayValue("Issue")`.
-- **HTML description** — The full formatted issue body is stored in both `description` and `u_html_description`.
+Required sections: Short Description, Description, Priority, Impact, Environment Details.
 
-**Full endpoint URL** (use this as `SERVICENOW_URL` in GitHub secrets):
+### `sr-information.md` — SR Information
 
-```
-https://<your-instance>.service-now.com/api/<scope>/github_case/v1/case
-```
+Minimal form for information-only requests.
 
-The `<scope>` segment is visible in the API record's **Base path** field.
-
-**Payload field mapping:**
-
-| GitHub payload key | ServiceNow field | Type | How set |
-|-------------------|-----------------|------|---------|
-| `u_short_description` | `short_description` | string 160 | direct |
-| `title` | `short_description` (fallback) | string 160 | direct, `[SR-Change]:` stripped |
-| `description` | `description` + `u_html_description` | string / html 5000 | direct |
-| `priority` | `priority` | integer | mapped (Critical→1 … Low→4) |
-| `u_impact` | `impact` | integer | mapped (High→1, Medium→2, Low→3) |
-| `category` | `category` | integer choice | `setDisplayValue` |
-| `account` | `account` | reference | `setDisplayValue` |
-| `case_type` | `u_case_type` | reference | `setDisplayValue` |
-| `announcement_type` | `u_announcement_type` | choice | direct |
-| `project` | `project` | reference | `setDisplayValue` |
-| `product` | `product` | reference | `setDisplayValue` |
-| `wso2_product` | `u_wso2_product` | reference | `setDisplayValue` |
-| `u_project_environment` | `u_project_environment` | glide_list | direct (comma-separated) |
-| `u_affected_component` | `u_affected_component` | string 4000 | direct |
-| `u_affected_services` | `u_affected_services` | string 4000 | direct |
-| `u_service_outage` | `u_service_outage` | string 4000 | direct |
-| `u_impact_description_overall` | `u_impact_description_overall` | string 4000 | direct |
-| `u_impact_description_customer` | `u_impact_description_customer` | string 4000 | direct |
-| `u_implementation_plan` | `u_implementation_plan` | string 4000 | direct |
-| `u_test_plan` | `u_test_plan` | string 4000 | direct |
-| `u_request_details` | `u_request_details` | string 1000 | direct |
-| `issue_number` | `u_github_issue_number` | string 20 | direct — idempotency key |
-| `issue_url` | `u_github_issue_url` | url 255 | direct |
-
-> `u_monitoring_checks` and `u_maintenance_window` have no dedicated SN fields — their content is included in the HTML description dump.
-
-**Success response (201):**
-
-```json
-{
-  "case_number": "CS0001234",
-  "sys_id": "abc123...",
-  "case_sys_id": "abc123...",
-  "message": "Case created successfully"
-}
-```
+Required sections: Request Description, Impact, Customer Project.
 
 ---
 
-### 3.2 PATCH `/case` — Update Case
+## Workflow: `issue-servicenow.yml` (Main Orchestrator)
 
-When a GitHub issue is edited after the Case already exists, Actions sends a PATCH with the updated field values.
+**Trigger:** `issues: [opened, edited, labeled]`
 
-**Resource settings:**
+This is the entry point for all inbound case operations. It runs every time an issue is created, edited, or labeled and decides whether to validate and create/update a ServiceNow case.
 
-| Field | Value |
-|-------|-------|
-| Name | `Update Case` |
-| HTTP Method | `PATCH` |
-| Relative path | `/case` |
+**Logic flow:**
 
-**Key behaviours:**
-
-| Step | Detail |
-|------|--------|
-| Lookup | Finds the case by `u_github_issue_number` |
-| Diff | Compares each incoming value to the current SN value |
-| Update | Sets only fields that have changed |
-| Work note | Adds a note: `Priority was updated from 3 - Moderate to 1 - Critical by johndoe` |
-| Description refresh | Always updates `description` and `u_html_description` with the regenerated HTML |
-| Response | Returns `case_number`, `sys_id`, `changes` (count), `change_log` (array) |
-
-Fields tracked for work notes: Priority, Impact, Short Description, Impact Description (Overall), Impact Description (Customer), Environment, Affected Component, Affected Services, Service Outage, Implementation Plan, Test Plan, Request Details.
-
----
-
-## Step 4 — Script Include: `GitHubRepositoryDispatch`
-
-A single reusable class that wraps GitHub's `repository_dispatch` API. Both Business Rules instantiate this class to send events; they never make direct HTTP calls.
-
-**Navigation:** System Definition → Script Includes → New
-
-| Field | Value |
-|-------|-------|
-| Name | `GitHubRepositoryDispatch` |
-| Client callable | false |
-| Description | Sends repository_dispatch events to GitHub via RESTMessageV2 |
-
-**How it works:**
-
-1. `initialize()` calls `_loadConfig()` which reads `github.dispatch.config` via `gs.getProperty` and parses the JSON.
-2. `send(eventType, clientPayload)` builds a `RESTMessageV2` POST to `https://api.github.com/repos/<owner>/<repo>/dispatches`.
-3. Required headers: `Authorization: Bearer <token>`, `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`.
-4. GitHub returns `204 No Content` on success — this is checked to determine `ok: true`.
-5. Any error is logged via `gs.error` and returned in the result object.
-
-**Quick connectivity test** (run from System Definition → Scripts - Background):
-
-```javascript
-var d = new GitHubRepositoryDispatch();
-var result = d.send('servicenow-cr-update', {
-    github_issue_number: '1',
-    action:              'state_changed',
-    cr_number:           'CHG0000001',
-    cr_sys_id:           gs.generateGUID(),
-    cr_state:            'New',
-    previous_state:      'Draft',
-    case_sys_id:         gs.generateGUID()
-});
-gs.info(JSON.stringify(result));
+```
+Issue event fires
+       ↓
+Gate: Does the issue body contain a known SR template marker?
+  → No: exit silently (not an SR issue)
+       ↓
+Check for existing SRType/* and CatalogueItem/* labels
+  → Missing: exit silently (waiting for labels to be added)
+       ↓
+Validate issue title starts with [SR-Change]:
+  → Fail: post failure comment, exit
+       ↓
+Validate all required fields per CatalogueItem/* ruleset
+  → Fail: remove SR labels, post failure comment, exit
+       ↓
+Add validation-passed label
+Post validation success comment
+       ↓
+Case already exists? (check for "ServiceNow Case Created Successfully" comment)
+  → Yes + issue was edited + no CRs yet: call servicenow-update-case.yml
+  → No: call servicenow-create-case.yml
 ```
 
-Expected: `{"ok":true,"status":204,"body":""}`.
+**Validation rules per catalog item:**
 
-| Response | Cause |
-|----------|-------|
-| `401 / 403` | Token is invalid, expired, or missing the required scope |
-| `404` | `owner` or `repo` is wrong in `github.dispatch.config` |
-| `422` | `event_type` is missing or `client_payload` is not a JSON object |
+| CatalogueItem | Fields that must not be blank | Extra rule |
+|---------------|------------------------------|------------|
+| Generic Requests | Short Description, Description, Priority, Impact, Impact Description (Overall), Impact Description (Customer), Environment Details, Affected Component, Affected Services, Service Outage/Downtime, Is a maintenance window required, Implementation Plan, Test Plan, Monitoring Checks | — |
+| Request Logs | Short Description, Description, Priority, Impact, Impact Description, Customer Project, Environment Details | Priority must be "Critical" |
+| Standard Generic | Short Description, Description, Priority, Impact, Environment Details | — |
+| Information | Request Description, Impact, Customer Project | — |
+
+A field is considered blank if its value is `_No response_` (the GitHub template default) or empty.
 
 ---
 
-## Step 5 — Business Rule: `Notify GitHub on CR created`
+## Workflow: `servicenow-create-case.yml` (Reusable)
 
-Fires immediately after a Change Request is inserted. Sends a `servicenow-cr-update` event with `action: "created"` to the linked GitHub issue.
+**Trigger:** `workflow_call` (called by `issue-servicenow.yml`)
 
-**Navigation:** System Definition → Business Rules → New
+Builds the full JSON payload from the issue body and POSTs it to ServiceNow.
 
-| Field | Value |
-|-------|-------|
-| Name | `Notify GitHub on CR created` |
-| Table | `Change Request [change_request]` |
-| Active | checked |
-| Advanced | checked |
+**Steps:**
 
-**When to run tab:**
+1. **Extract fields** — Parses all `### Section Name` headings from the issue body using a Python script.
+2. **Load config** — Reads `.github/servicenow-config.yml` to get account, project, product, and other constants.
+3. **Build payload** — Assembles a JSON object with issue fields + config constants + issue metadata (number, URL, title).
+4. **POST to ServiceNow** — `curl -X POST` to `SERVICENOW_URL` with Basic Auth.
+5. **Parse response** — Extracts `case_number` and `case_sys_id` from the JSON response.
+6. **Post comments** — On success: posts a comment with the case number and a direct link to the case in ServiceNow. On failure: posts an error comment.
 
-| Field | Value |
-|-------|-------|
-| When | `after` |
-| Insert | checked |
-| Update | unchecked |
-| Delete | unchecked |
+**Comments posted:**
 
-**What the script does:**
+- `✅ ServiceNow Case Created Successfully — [CS0001234](<link>)` — includes a clickable link to the case in ServiceNow
+- `❌ ServiceNow Case Creation Failed — <error detail>`
+- `👀 Watching for Change Requests` — posted alongside the success comment to indicate CR notifications are active
 
-1. Reads `u_github_issue_number` directly from the CR.
-2. Fallback: if the CR was created manually and the field is empty, looks up the parent Case and reads `u_github_issue_number` from there.
-3. Aborts silently if no issue number is found (CR not linked to a GitHub issue).
-4. Counts sibling CRs under the same parent Case (`total_crs`, `is_first_cr`).
-5. Calls `GitHubRepositoryDispatch.send('servicenow-cr-update', { ... })`.
+---
 
-**Payload sent to GitHub:**
+## Workflow: `servicenow-update-case.yml` (Reusable)
 
-```json
-{
-  "github_issue_number": "42",
-  "cr_number": "CHG0000001",
-  "cr_sys_id": "<sys_id>",
-  "cr_state": "New",
-  "case_sys_id": "<parent_case_sys_id>",
-  "action": "created",
-  "total_crs": 1,
-  "is_first_cr": true
-}
+**Trigger:** `workflow_call` (called by `issue-servicenow.yml` on issue edit)
+
+Sends a PATCH with the updated field values when an issue is edited after its case already exists.
+
+**Condition for running:** The issue must have a `validation-passed` label, a "ServiceNow Case Created Successfully" comment must exist, and no Change Requests must have been created yet (editing is locked once a CR exists to prevent state drift).
+
+**Comments posted:**
+
+- `🔄 ServiceNow Case Updated — N field(s) updated: <field list>`
+- `❌ ServiceNow Case Update Failed — <error detail>`
+
+---
+
+## Workflow: `sn-cr-notifier.yml` (CR Notifications)
+
+**Trigger:** `repository_dispatch: [servicenow-cr-update]`
+
+Receives events from ServiceNow Business Rules and posts Change Request updates as issue comments.
+
+**Handles two actions:**
+
+### `action: "created"` — New CR
+
+1. Receives `github_issue_number`, `cr_number`, `cr_sys_id`, `cr_state`, `case_sys_id`.
+2. Queries ServiceNow's Table API to fetch all CRs linked to `case_sys_id`.
+3. Posts a comment listing the new CR and all existing CRs for the case.
+
+**Comment format:**
+```
+New Change Request Created
+
+CR Number: CHG0000001 (link)
+State: New
+
+All Change Requests for this Case (1)
+- CHG0000001 - New
+
+---
+Automatically notified by ServiceNow
 ```
 
+### `action: "state_changed"` — CR State Update
+
+1. Receives `github_issue_number`, `cr_number`, `cr_state`, `previous_state`, optional `assigned_to`.
+2. Resolves numeric state codes to display names using the state map.
+3. Posts a state-change comment.
+
+**Comment format:**
+```
+Change Request State Updated
+
+CR Number: CHG0000001 (link)
+State Change: New → Assess
+
 ---
-
-## Step 6 — Business Rule: `Notify GitHub on CR state change`
-
-Fires when the `state` field of a Change Request changes. Sends a `servicenow-cr-update` event with `action: "state_changed"` and includes the previous state.
-
-**Navigation:** System Definition → Business Rules → New
-
-| Field | Value |
-|-------|-------|
-| Name | `Notify GitHub on CR state change` |
-| Table | `Change Request [change_request]` |
-| Active | checked |
-| Advanced | checked |
-
-**When to run tab:**
-
-| Field | Value |
-|-------|-------|
-| When | `after` |
-| Update | checked |
-| Filter Conditions | **State** `changes` |
-
-**Payload sent to GitHub:**
-
-```json
-{
-  "github_issue_number": "42",
-  "cr_number": "CHG0000001",
-  "cr_sys_id": "<sys_id>",
-  "cr_state": "Assess",
-  "case_sys_id": "<parent_case_sys_id>",
-  "action": "state_changed",
-  "previous_state": "New"
-}
+Automatically notified by ServiceNow
 ```
 
-The `previous_state` value comes from the `previous` object available in Business Rule scripts. GitHub Actions maps both state values through its own state-name lookup table before posting the comment.
+**State map used by this workflow:**
 
----
-
-## CR State Number to Display Name Mapping
-
-ServiceNow stores CR state as integers. GitHub Actions resolves them to human-readable names using this map (also maintained in `sn-cr-notifier.yml`):
-
-| Number | Display name |
-|--------|-------------|
+| Code | Name |
+|------|------|
 | `-5` | New |
 | `-4` | Assess |
 | `-3` | Authorize |
@@ -329,28 +250,102 @@ ServiceNow stores CR state as integers. GitHub Actions resolves them to human-re
 | `4` | Closed |
 | `5` | Canceled |
 
-The Business Rules send the display value directly (`current.state.getDisplayValue()`), but the workflow falls back to this map if a raw integer arrives.
+---
+
+## Workflow: `github-comment-to-sn.yml` (GitHub Comment → SN)
+
+**Trigger:** `issue_comment: [created]`
+
+Syncs human comments posted on a GitHub issue to the linked ServiceNow case's comments field.
+
+**Steps:**
+
+1. Skip if the comment author is a bot (GitHub Actions bot, etc.).
+2. Find the "ServiceNow Case Created Successfully" comment on the issue.
+3. Extract the `case_sys_id` from the URL query string in that comment.
+4. PATCH the case's `comments` field with the new text, prepended with `@githubuser (GitHub Comment) <url>`.
+
+This creates a one-way sync: every human comment on the GitHub issue appears as an Additional Comment on the ServiceNow case.
 
 ---
 
-## Optional — Flow Designer: SN Comment → GitHub
+## Workflow: `sn-comment-to-github.yml` (SN Comment → GitHub)
 
-An optional Flow Designer flow can post ServiceNow case comments to the linked GitHub issue. This is documented separately in [guides/sn-comment-to-github.md](../guides/sn-comment-to-github.md).
+**Trigger:** `repository_dispatch: [servicenow-note]`
 
-- **Trigger:** `sn_customerservice_case` — Additional comments field changes
-- **Action:** Reads the latest journal entry via `getJournalEntry(1)`, then calls `GitHubRepositoryDispatch.send('servicenow-note', { ... })`
-- **GitHub side:** `sn-comment-to-github.yml` picks up the event and posts the comment on the issue
+Receives comment events from the optional ServiceNow Flow Designer flow and posts them as GitHub issue comments.
+
+**Payload received:**
+
+| Key | Value |
+|-----|-------|
+| `issue_number` | GitHub issue number |
+| `note_text` | Comment body |
+| `note_type` | `"additional_comments"` or `"work_notes"` |
+| `case_number` | ServiceNow case number (e.g. `CS0001234`) |
+| `sn_user` | ServiceNow user display name |
+
+**Comment format:**
+```
+💬 ServiceNow Comment — Case CS0001234
+
+<comment text>
+
+Posted by Jane Smith via ServiceNow
+```
 
 ---
 
-## Troubleshooting
+## Workflow: `servicenow-inbound.yml` (Dispatch Handler)
 
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| Case not created, HTTP 400 | `issue_number` missing from payload | Check `servicenow-create-case.yml` build_payload step |
-| Case not created, HTTP 404 | Wrong `SERVICENOW_URL` secret | Copy exact Base path from the Scripted REST API record |
-| Reference fields blank in SN | Display name mismatch | Verify exact names in `.github/servicenow-config.yml` match SN records |
-| CR comment not posted to GitHub | `github.dispatch.config` missing or wrong | Create/update the system property with correct token, owner, repo |
-| `401` from GitHub dispatch | Token expired or wrong scope | Regenerate PAT with Contents: Read and write, update system property |
-| `404` from GitHub dispatch | Wrong owner or repo in system property | Update `github.dispatch.config` |
-| `gs.error` in system log | JSON in system property is malformed | Validate JSON before saving the property |
+**Trigger:** `repository_dispatch: [validation-passed]`
+
+A thin dispatcher that invokes `servicenow-create-case.yml` when a `validation-passed` event is received via the repository_dispatch API. Used for external or manual dispatch-based testing scenarios.
+
+---
+
+## End-to-End Workflow Chain
+
+```
+Issue created/labeled
+        ↓
+issue-servicenow.yml
+  ├── validates fields
+  ├── on pass → calls servicenow-create-case.yml
+  │                   └── POSTs to SN → posts success comment
+  └── on edit (after case exists) → calls servicenow-update-case.yml
+                                          └── PATCHes SN → posts update comment
+
+ServiceNow creates CR
+        ↓
+Business Rule fires → sends repository_dispatch
+        ↓
+sn-cr-notifier.yml → posts CR comment on issue
+
+User comments on issue
+        ↓
+github-comment-to-sn.yml → PATCHes SN case comments
+
+ServiceNow agent posts case comment (optional)
+        ↓
+Flow Designer → sends repository_dispatch
+        ↓
+sn-comment-to-github.yml → posts comment on issue
+```
+
+---
+
+## Bot Comments Reference
+
+| Comment | Posted by | When |
+|---------|-----------|------|
+| `✅ Template Validation Passed` | `issue-servicenow.yml` | Field validation succeeds |
+| `❌ Template Validation Failed` | `issue-servicenow.yml` | Field validation fails |
+| `✅ ServiceNow Case Created Successfully` | `servicenow-create-case.yml` | Case created in SN |
+| `❌ ServiceNow Case Creation Failed` | `servicenow-create-case.yml` | POST to SN fails |
+| `👀 Watching for Change Requests` | `servicenow-create-case.yml` | Posted alongside case creation success |
+| `🔄 ServiceNow Case Updated` | `servicenow-update-case.yml` | PATCH to SN succeeds |
+| `❌ ServiceNow Case Update Failed` | `servicenow-update-case.yml` | PATCH to SN fails |
+| `New Change Request Created` | `sn-cr-notifier.yml` | SN Business Rule fires on CR insert |
+| `Change Request State Updated` | `sn-cr-notifier.yml` | SN Business Rule fires on CR state change |
+| `💬 ServiceNow Comment` | `sn-comment-to-github.yml` | SN Flow Designer posts a case comment |
