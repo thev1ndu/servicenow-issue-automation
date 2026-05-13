@@ -245,7 +245,8 @@ jobs:
             const caseUrl = caseSysId ? `${{ secrets.SERVICENOW_UI_URL }}/now/nav/ui/classic/params/target/sn_customerservice_case.do?sys_id=${caseSysId}&sysparm_view=wso2_cs_generic` : null;
             const caseLink = caseUrl ? `[#${caseNumber}](${caseUrl})` : `#${caseNumber}`;
             const now = new Date();
-            const ts = now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+            const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+            const ts = ist.toISOString().replace('T', ' ').slice(0, 19) + ' IST';
             let allFields = {};
             try { allFields = JSON.parse(process.env.ALL_FIELDS_JSON || '{}'); } catch (_) {}
             await github.rest.issues.createComment({

@@ -437,6 +437,179 @@ Click **Save**, then **Activate**.
 
 ---
 
+## Flow C — Planned Dates Updated (Scheduled State Only)
+
+This flow fires only when the **Planned start date** or **Planned end date** changes while the CR is in **Scheduled** state. It posts the updated change window to GitHub. It does **not** fire for any other state.
+
+### C.1 Create the Flow
+
+Click **New > Flow**
+
+- **Name**: `SN CR Dates Updated → GitHub`
+- **Description**: `Notifies GitHub when planned dates are updated on a Scheduled Change Request`
+- **Run as**: `System User`
+
+---
+
+### C.2 Set the Trigger
+
+Click **Add a trigger**.
+
+1. Select **Record > Updated**
+2. **Table**: `Change Request [change_request]`
+3. Under **Condition**, click **Add Filters**:
+   - Field: `Planned start date` | Operator: `changes`
+   - OR Field: `Planned end date` | Operator: `changes`
+   - AND Field: `State` | Operator: `is` | Value: `Scheduled`
+   - AND Field: `Parent` | Operator: `is not empty`
+
+Click **Done**.
+
+---
+
+### C.3 Look up the parent Case record
+
+Same as B.3:
+
+- **Look Up Record** step
+- Table: `Customer Service Case [sn_customerservice_case]`
+- Filter: `Sys ID` is → `Trigger > Change Request Record > Parent > Sys ID`
+
+---
+
+### C.4 Add Script Step 1 — Read values
+
+Click **+** below the Look Up Record step. Select **Script**.
+
+#### Input Variables
+
+| Variable Name | Type | Data pill to select |
+|---|---|---|
+| `github_issue_number` | String | Look Up Record > Customer Service Case Record > **u_github_issue_number** |
+| `case_sys_id` | String | Look Up Record > Customer Service Case Record > **Sys ID** |
+| `cr_number` | String | Trigger > Change Request Record > **Number** |
+| `cr_sys_id` | String | Trigger > Change Request Record > **Sys ID** |
+| `cr_planned_start` | String | Trigger > Change Request Record > **Planned start date** |
+| `cr_planned_end` | String | Trigger > Change Request Record > **Planned end date** |
+
+#### Script
+
+```javascript
+(function execute(inputs, outputs) {
+
+  var issueNumber  = inputs.github_issue_number + '';
+  var caseId       = inputs.case_sys_id + '';
+  var crNumber     = inputs.cr_number + '';
+  var crSysId      = inputs.cr_sys_id + '';
+  var plannedStart = inputs.cr_planned_start + '';
+  var plannedEnd   = inputs.cr_planned_end + '';
+
+  outputs.issue_number  = issueNumber;
+  outputs.case_sys_id   = caseId;
+  outputs.cr_number     = crNumber;
+  outputs.cr_sys_id     = crSysId;
+  outputs.planned_start = plannedStart;
+  outputs.planned_end   = plannedEnd;
+
+  outputs.should_send = (issueNumber.length > 0 && crNumber.length > 0 && (plannedStart.length > 0 || plannedEnd.length > 0)) ? 'true' : 'false';
+
+})(inputs, outputs);
+```
+
+#### Output Variables
+
+| Variable Name | Type |
+|---|---|
+| `issue_number` | String |
+| `case_sys_id` | String |
+| `cr_number` | String |
+| `cr_sys_id` | String |
+| `planned_start` | String |
+| `planned_end` | String |
+| `should_send` | String |
+
+---
+
+### C.5 Add an If Condition
+
+Same as A.5 — check `should_send` is `true`.
+
+---
+
+### C.6 Add Script Step 2 — Call GitHub
+
+#### Input Variables
+
+| Variable Name | Type | Source |
+|---|---|---|
+| `issue_number` | String | Script Step 1 > `issue_number` |
+| `case_sys_id` | String | Script Step 1 > `case_sys_id` |
+| `cr_number` | String | Script Step 1 > `cr_number` |
+| `cr_sys_id` | String | Script Step 1 > `cr_sys_id` |
+| `planned_start` | String | Script Step 1 > `planned_start` |
+| `planned_end` | String | Script Step 1 > `planned_end` |
+
+#### Script
+
+```javascript
+(function execute(inputs, outputs) {
+
+  try {
+    var configJson = gs.getProperty('github.dispatch.config');
+    if (!configJson) {
+      gs.error('System property github.dispatch.config is missing');
+      outputs.http_status = 'config_missing';
+      outputs.success     = 'false';
+      return;
+    }
+
+    var config   = JSON.parse(configJson);
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
+
+    var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch_cr');
+    rm.setEndpoint(endpoint);
+    rm.setRequestHeader('Authorization', 'token ' + config.token);
+
+    rm.setRequestBody(JSON.stringify({
+      event_type: 'servicenow-cr-update',
+      client_payload: {
+        github_issue_number: inputs.issue_number,
+        cr_number:           inputs.cr_number,
+        cr_sys_id:           inputs.cr_sys_id,
+        case_sys_id:         inputs.case_sys_id,
+        planned_start:       inputs.planned_start,
+        planned_end:         inputs.planned_end,
+        action:              'dates_updated'
+      }
+    }));
+
+    var response   = rm.execute();
+    var httpStatus = response.getStatusCode();
+
+    outputs.http_status = httpStatus + '';
+    outputs.success     = (httpStatus == 204 || httpStatus == 200) ? 'true' : 'false';
+
+    if (outputs.success == 'false') {
+      gs.warn('GitHub CR dates dispatch failed. HTTP ' + httpStatus + ' Body: ' + response.getBody());
+    }
+
+  } catch (ex) {
+    outputs.http_status = 'error';
+    outputs.success     = 'false';
+    gs.error('GitHub CR dates dispatch exception: ' + ex.message);
+  }
+
+})(inputs, outputs);
+```
+
+---
+
+### C.7 Save and Activate Flow C
+
+Click **Save**, then **Activate**.
+
+---
+
 ## Testing
 
 ### Test Flow A

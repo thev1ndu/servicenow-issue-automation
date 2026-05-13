@@ -47,12 +47,13 @@ jobs:
             const assignedTo = (p.assigned_to && p.assigned_to !== 'null') ? p.assigned_to : '';
             const servicenowUiUrl = process.env.SERVICENOW_UI_URL;
             const crUrl = crSysId ? `${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${crSysId}` : `#`;
+            const toIST = d => new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
             const now = new Date();
-            const timestamp = now.toUTCString().replace('GMT', 'UTC');
+            const timestamp = toIST(now).toUTCString().replace('GMT', 'IST');
             const formatSNDate = s => {
               if (!s || s === 'null') return '';
               const d = new Date(s.replace(' ', 'T') + 'Z');
-              return isNaN(d.getTime()) ? s : d.toUTCString().replace('GMT', 'UTC');
+              return isNaN(d.getTime()) ? s : toIST(d).toUTCString().replace('GMT', 'IST');
             };
             const plannedStart = formatSNDate(p.planned_start);
             const plannedEnd   = formatSNDate(p.planned_end);
@@ -63,7 +64,7 @@ jobs:
               core.warning('Missing github_issue_number, cr_number, or action — skipping');
               return;
             }
-            if (action !== 'created' && action !== 'state_changed') {
+            if (action !== 'created' && action !== 'state_changed' && action !== 'dates_updated') {
               core.warning('Unknown action: ' + action);
               return;
             }
@@ -99,5 +100,10 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
                 body: `💬 **ServiceNow Change Request — Updated [#${crNumber}](${crUrl})**\n\n> ${previousState} → **${crState}**${assignedTo ? `\n> **Assigned To:** ${assignedTo}` : ''}${cwBlock}\n> 🕐 **Notified:** ${timestamp}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
+              });
+            } else if (action === 'dates_updated') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
+                body: `💬 **ServiceNow Change Request — Schedule Updated [#${crNumber}](${crUrl})**\n\n> ⏰ **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}\n> 🕐 **Notified:** ${timestamp}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
               });
             }
