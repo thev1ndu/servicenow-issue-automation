@@ -30,12 +30,21 @@ jobs:
               core.info('Note originated from GitHub — skipping to prevent echo loop');
               return;
             }
-            const label = noteType === 'work_notes' ? '📋 ServiceNow Work Note' : '💬 ServiceNow Comment';
+            const label = noteType === 'work_notes' ? '📋 ServiceNow Work Note'
+                        : noteType === 'update' ? '💬 ServiceNow Update'
+                        : '💬 ServiceNow Comment';
             const caseRef = caseNumber ? ` — Case ${caseNumber}` : '';
             const newlineIndex = noteText.indexOf('\n');
-            const formattedNote = newlineIndex !== -1
-              ? `**${noteText.slice(0, newlineIndex)}**\n${noteText.slice(newlineIndex)}`
-              : `**${noteText}**`;
+            let formattedNote;
+            if (noteType === 'update') {
+              formattedNote = newlineIndex !== -1
+                ? `${noteText.slice(0, newlineIndex)}\n\n${noteText.slice(newlineIndex + 1)}`
+                : noteText;
+            } else {
+              formattedNote = newlineIndex !== -1
+                ? `**${noteText.slice(0, newlineIndex)}**\n${noteText.slice(newlineIndex)}`
+                : `**${noteText}**`;
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
               body: `${label}${caseRef}\n\n${formattedNote}\n\n---\n*Posted by ${snUser} via ServiceNow*`
