@@ -47,6 +47,8 @@ jobs:
             const assignedTo = p.assigned_to || '';
             const servicenowUiUrl = process.env.SERVICENOW_UI_URL;
             const crUrl = crSysId ? `${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${crSysId}` : `#`;
+            const now = new Date();
+            const timestamp = now.toUTCString().replace('GMT', 'UTC');
             if (!issueNumber || !crNumber || !action) {
               core.warning('Missing github_issue_number, cr_number, or action — skipping');
               return;
@@ -81,11 +83,11 @@ jobs:
               ).join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `New Change Request Created\n\n**CR Number:** [${crNumber}](${crUrl})\n**State:** ${crState}${metaLine}\nAll Change Requests for this Case (${allCRs.length})\n${crListMarkdown}\n\n---\n*Automatically notified by ServiceNow*`
+                body: `New Change Request Created\n\n**CR Number:** [${crNumber}](${crUrl})\n**State:** ${crState}\n**Time:** ${timestamp}${metaLine}\nAll Change Requests for this Case (${allCRs.length})\n${crListMarkdown}\n\n---\n*Automatically notified by ServiceNow*`
               });
             } else if (action === 'state_changed') {
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `Change Request State Updated\n\n**CR Number:** [${crNumber}](${crUrl})\n**State Change:** ${previousState} → **${crState}**${assignedTo ? `\n**Assigned To:** ${assignedTo}` : ''}${metaLine}\n\n---\n*Automatically notified by ServiceNow*`
+                body: `Change Request State Updated\n\n**CR Number:** [${crNumber}](${crUrl})\n**State Change:** ${previousState} → **${crState}**${assignedTo ? `\n**Assigned To:** ${assignedTo}` : ''}\n**Time:** ${timestamp}${metaLine}\n\n---\n*Automatically notified by ServiceNow*`
               });
             }
