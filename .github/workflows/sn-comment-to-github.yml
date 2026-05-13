@@ -41,7 +41,7 @@ jobs:
                         : noteType === 'update' ? '💬 **ServiceNow Update**'
                         : '💬 **ServiceNow Comment**';
             const caseRef = caseNumber
-              ? (caseUrl ? ` — Case #[${caseNumber}](${caseUrl})` : ` — Case ${caseNumber}`)
+              ? (caseUrl ? ` — Case [#${caseNumber}](${caseUrl})` : ` — Case #${caseNumber}`)
               : '';
             const newlineIndex = noteText.indexOf('\n');
             const metaLine  = newlineIndex !== -1 ? noteText.slice(0, newlineIndex).trim() : '';
