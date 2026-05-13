@@ -145,7 +145,7 @@ jobs:
             if (changesCount > 0) {
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNum,
-                body: `🔄 ServiceNow Case Updated\n\n**Case:** ${caseDisplay} — **${changesCount} field(s) updated.**\n\n---\n*Automated via GitHub Actions*`
+                body: `🔄 **ServiceNow Case Updated** · ${caseDisplay}\n\n> **${changesCount} field(s) updated**\n\n---\n*Automated via GitHub Actions*`
               });
             }
 
@@ -156,5 +156,5 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: parseInt('${{ inputs.issue_number }}', 10),
-              body: `❌ ServiceNow Case Update Failed\n\n[View workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n---\n*Contact support if the issue persists.*`
+              body: `❌ **ServiceNow Case Update Failed**\n\n[View workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n---\n*Contact support if the issue persists.*`
             });

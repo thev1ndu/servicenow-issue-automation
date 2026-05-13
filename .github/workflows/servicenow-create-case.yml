@@ -98,7 +98,7 @@ jobs:
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber
             });
-            if (comments.some(c => c.user.type === 'Bot' && c.body.includes('ServiceNow Case Created Successfully'))) {
+            if (comments.some(c => c.user.type === 'Bot' && c.body.includes('ServiceNow Case Created'))) {
               core.setOutput('should_process', 'false');
               return;
             }
@@ -248,7 +248,7 @@ jobs:
             try { allFields = JSON.parse(process.env.ALL_FIELDS_JSON || '{}'); } catch (_) {}
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNum,
-              body: `✅ ServiceNow Case Created Successfully\n\n**Case Number:** ${caseDisplay}\n\nRequest Details\n- **Catalog:** ${{ steps.extract_fields.outputs.catalog_item }}\n- **Type:** ${{ steps.extract_fields.outputs.case_type }}\n- **Priority:** ${{ steps.extract_fields.outputs.priority }}\n- **Environment:** ${{ steps.extract_fields.outputs.environment }}\n\nAuto-Mapped\n- **Project:** ${{ steps.load_config.outputs.project_name }}\n- **Product:** ${{ steps.load_config.outputs.product }}\n\n---\n*${Object.keys(allFields).length} fields auto-extracted.*\n*Automated via GitHub Actions*`
+              body: `✅ **ServiceNow Case Created** · ${caseDisplay}\n\n> **Catalog:** ${{ steps.extract_fields.outputs.catalog_item }} · **Type:** ${{ steps.extract_fields.outputs.case_type }}\n> **Priority:** ${{ steps.extract_fields.outputs.priority }} · **Environment:** ${{ steps.extract_fields.outputs.environment }}\n> **Project:** ${{ steps.load_config.outputs.project_name }}\n> **Product:** ${{ steps.load_config.outputs.product }}\n\n_${Object.keys(allFields).length} fields auto-extracted._\n\n---\n*Automated via GitHub Actions*`
             });
 
       - if: failure() && steps.get_issue.outputs.should_process == 'true'
@@ -261,5 +261,5 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: issueNum,
-              body: `❌ ServiceNow Case Creation Failed\n\n**Catalog:** ${catalogItem}\n**Case type:** ${caseType}\n\n[View workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n---\n*Contact support if the issue persists.*`
+              body: `❌ **ServiceNow Case Creation Failed**\n\n> **Catalog:** ${catalogItem} · **Type:** ${caseType}\n\n[View workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n---\n*Contact support if the issue persists.*`
             });
