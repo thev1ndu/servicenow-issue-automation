@@ -1,0 +1,80 @@
+name: ServiceNow Case Updates → GitHub
+
+on:
+  repository_dispatch:
+    types: [servicenow-case-update]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  case-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v8
+        env:
+          SERVICENOW_UI_URL: ${{ secrets.SERVICENOW_UI_URL }}
+        with:
+          script: |
+            const p = context.payload.client_payload || {};
+            core.info('servicenow-case-update payload: ' + JSON.stringify(p));
+
+            const action      = p.action || '';
+            const issueNumber = parseInt(p.github_issue_number, 10);
+            const caseNumber  = p.case_number        || '';
+            const caseSysId   = p.case_sys_id        || '';
+            const snUser      = p.sn_user            || 'ServiceNow';
+            const resolution  = p.resolution_notes   || '';
+            const assignedTo  = p.assigned_to        || '';
+
+            if (!issueNumber || !action) {
+              core.warning('Missing github_issue_number or action — skipping');
+              return;
+            }
+
+            const snUiUrl = process.env.SERVICENOW_UI_URL || '';
+            const caseUrl = caseSysId && snUiUrl
+              ? `${snUiUrl}/now/nav/ui/classic/params/target/sn_customerservice_case.do?sys_id=${caseSysId}&sysparm_view=wso2_cs_generic`
+              : '';
+            const caseRef = caseUrl ? `[${caseNumber}](${caseUrl})` : (caseNumber || 'case');
+
+            const toIST = d => new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+            const ts = toIST(new Date()).toUTCString().replace('GMT', 'IST');
+
+            if (action === 'closed') {
+              const resolutionBlock = resolution
+                ? `\n> **Resolution:** ${resolution}`
+                : '';
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                issue_number: issueNumber,
+                body: `✅ **ServiceNow Case Closed — ${caseRef}**\n\n> Case has been closed in ServiceNow.${resolutionBlock}\n> 🕐 **Closed:** ${ts}\n\n---\n*Closed by ${snUser} via ServiceNow*`
+              });
+
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                issue_number: issueNumber,
+                state: 'closed',
+                state_reason: 'completed'
+              });
+
+              core.info(`GitHub issue #${issueNumber} closed — ServiceNow case ${caseNumber}`);
+
+            } else if (action === 'assigned') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                issue_number: issueNumber,
+                body: `👤 **ServiceNow Case Assigned — ${caseRef}**\n\n> **Assigned to:** ${assignedTo}\n> 🕐 **Updated:** ${ts}\n\n---\n*Assigned by ${snUser} via ServiceNow*`
+              });
+
+              core.info(`GitHub issue #${issueNumber} notified of assignment to ${assignedTo}`);
+
+            } else {
+              core.warning(`Unknown action: ${action} — skipping`);
+            }

@@ -40,6 +40,7 @@ An optional third flow syncs ServiceNow case comments to the GitHub issue.
 | Flow Designer — `SN CR Created → GitHub` (Flow A) | [GUIDE/ServiceNow/sn-cr-notifier.md](../GUIDE/ServiceNow/sn-cr-notifier.md) |
 | Flow Designer — `SN CR State Changed → GitHub` (Flow B) | [GUIDE/ServiceNow/sn-cr-notifier.md](../GUIDE/ServiceNow/sn-cr-notifier.md) |
 | Flow Designer — `SN Comment to GitHub` (optional) | [GUIDE/ServiceNow/sn-comment-to-github.md](../GUIDE/ServiceNow/sn-comment-to-github.md) |
+| Flow Designer — `SN Case Updates → GitHub` (closed + assigned) | [GUIDE/ServiceNow/sn-case-updates.md](../GUIDE/ServiceNow/sn-case-updates.md) |
 | End-to-end testing and troubleshooting | [GUIDE/step4.md](../GUIDE/step4.md) |
 
 ---
@@ -81,5 +82,6 @@ If setting this up from scratch, follow this order:
 4. **[GUIDE/ServiceNow/setup-rest-message.md](../GUIDE/ServiceNow/setup-rest-message.md)** — Create the `GitHub Integration` REST Message
 5. **[GUIDE/ServiceNow/sn-cr-notifier.md](../GUIDE/ServiceNow/sn-cr-notifier.md)** — Create Flow Designer flows for CR notifications
 6. **[GUIDE/ServiceNow/sn-comment-to-github.md](../GUIDE/ServiceNow/sn-comment-to-github.md)** — Create the comment sync flow (optional)
-7. Add the four GitHub secrets to the repository
-8. **[GUIDE/step4.md](../GUIDE/step4.md)** — Run end-to-end tests
+7. **[GUIDE/ServiceNow/sn-case-updates.md](../GUIDE/ServiceNow/sn-case-updates.md)** — Create the case updates flow (handles both case closed and case assigned in one flow)
+8. Add the four GitHub secrets to the repository
+9. **[GUIDE/step4.md](../GUIDE/step4.md)** — Run end-to-end tests
