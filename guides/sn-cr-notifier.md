@@ -259,6 +259,7 @@ Click **Add a trigger**.
 2. **Table**: `Change Request [change_request]`
 3. **Condition**:
    - Field: `State` | Operator: `changes`
+   - OR Field: `Assigned to` | Operator: `changes`
    - AND Field: `Parent` | Operator: `is not empty`
 
 Click **Done**.
@@ -287,6 +288,7 @@ Same input variables as A.4, with one additional variable for previous state:
 | `cr_sys_id` | String | Trigger > Change Request Record > **Sys ID** |
 | `cr_state` | String | Trigger > Change Request Record > **State** |
 | `cr_previous_state` | String | Trigger > Change Request Record > **State (Previous value)** |
+| `cr_assigned_to` | String | Trigger > Change Request Record > **Assigned to** > **Name** |
 
 > "**State (Previous value)**" is available in the data picker for Record Updated triggers.
 > In the data pill panel, expand **Trigger > Change Request Record**, then look for the field with "(Previous value)" suffix.
@@ -302,6 +304,7 @@ Same input variables as A.4, with one additional variable for previous state:
   var crSysId       = inputs.cr_sys_id + '';
   var crState       = inputs.cr_state + '';
   var previousState = inputs.cr_previous_state + '';
+  var assignedTo    = inputs.cr_assigned_to + '';
 
   outputs.issue_number    = issueNumber;
   outputs.case_sys_id     = caseId;
@@ -309,12 +312,11 @@ Same input variables as A.4, with one additional variable for previous state:
   outputs.cr_sys_id       = crSysId;
   outputs.cr_state        = crState;
   outputs.previous_state  = previousState;
+  outputs.assigned_to     = assignedTo;
   outputs.should_send     = (issueNumber.length > 0 && crNumber.length > 0) ? 'true' : 'false';
 
 })(inputs, outputs);
 ```
-
-#### Output Variables
 
 #### Output Variables
 
@@ -326,6 +328,7 @@ Same input variables as A.4, with one additional variable for previous state:
 | `cr_sys_id` | String |
 | `cr_state` | String |
 | `previous_state` | String |
+| `assigned_to` | String |
 | `should_send` | String |
 
 ---
@@ -367,6 +370,7 @@ Same structure as A.6 with this script:
         cr_sys_id:           inputs.cr_sys_id,
         cr_state:            inputs.cr_state,
         previous_state:      inputs.previous_state,
+        assigned_to:         inputs.assigned_to,
         case_sys_id:         inputs.case_sys_id,
         action:              'state_changed'
       }
