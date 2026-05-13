@@ -27,7 +27,6 @@ jobs:
             const crNumber = p.cr_number;
             const crSysId = p.cr_sys_id;
             const crState = p.cr_state;
-            const crEnvironment = p.cr_environment || 'Not specified';
             const caseSysId = p.case_sys_id || '';
             const action = p.action;
             const previousState = p.previous_state || '';
@@ -67,7 +66,7 @@ jobs:
               ).join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `New Change Request Created\n\n**CR Number:** [${crNumber}](${crUrl})\n**State:** ${crState}\n**Environment:** ${crEnvironment}${metaLine}\nAll Change Requests for this Case (${allCRs.length})\n${crListMarkdown}\n\n---\n*Automatically notified by ServiceNow*`
+                body: `New Change Request Created\n\n**CR Number:** [${crNumber}](${crUrl})\n**State:** ${crState}${metaLine}\nAll Change Requests for this Case (${allCRs.length})\n${crListMarkdown}\n\n---\n*Automatically notified by ServiceNow*`
               });
             } else if (action === 'state_changed') {
               await github.rest.issues.createComment({
