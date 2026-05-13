@@ -26,10 +26,24 @@ jobs:
             const issueNumber = p.github_issue_number;
             const crNumber = p.cr_number;
             const crSysId = p.cr_sys_id;
-            const crState = p.cr_state;
+            const STATE_MAP = {
+              '-5': 'New',
+              '-4': 'Assess',
+              '-3': 'Authorize',
+              '-2': 'Customer Approval',
+              '-1': 'Scheduled',
+              '0':  'Implement',
+              '1':  'Review',
+              '2':  'Customer Review',
+              '3':  'Rollback',
+              '4':  'Closed',
+              '5':  'Canceled',
+            };
+            const resolveState = s => STATE_MAP[String(s).trim()] || s;
+            const crState = resolveState(p.cr_state);
             const caseSysId = p.case_sys_id || '';
             const action = p.action;
-            const previousState = p.previous_state || '';
+            const previousState = resolveState(p.previous_state || '');
             const servicenowUiUrl = process.env.SERVICENOW_UI_URL;
             const crUrl = crSysId ? `${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${crSysId}` : `#`;
             if (!issueNumber || !crNumber || !action) {
@@ -62,7 +76,7 @@ jobs:
                 allCRs = [{ number: crNumber, sys_id: crSysId, state: crState }];
               }
               const crListMarkdown = allCRs.map(cr =>
-                `- [${cr.number}](${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${cr.sys_id}) - ${cr.state || 'Unknown'}`
+                `- [${cr.number}](${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${cr.sys_id}) - ${resolveState(cr.state) || 'Unknown'}`
               ).join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
