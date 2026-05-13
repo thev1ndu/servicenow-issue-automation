@@ -103,29 +103,23 @@ Click **+** below the Look Up Record step. Select **Script**.
 | `cr_number` | String | Trigger > Change Request Record > **Number** |
 | `cr_sys_id` | String | Trigger > Change Request Record > **Sys ID** |
 | `cr_state` | String | Trigger > Change Request Record > **State** |
-| `cr_planned_start` | String | Trigger > Change Request Record > **Planned start date** |
-| `cr_planned_end` | String | Trigger > Change Request Record > **Planned end date** |
 
 #### Script
 
 ```javascript
 (function execute(inputs, outputs) {
 
-  var issueNumber   = inputs.github_issue_number + '';
-  var caseId        = inputs.case_sys_id + '';
-  var crNumber      = inputs.cr_number + '';
-  var crSysId       = inputs.cr_sys_id + '';
-  var crState       = inputs.cr_state + '';
-  var plannedStart  = inputs.cr_planned_start + '';
-  var plannedEnd    = inputs.cr_planned_end + '';
+  var issueNumber = inputs.github_issue_number + '';
+  var caseId      = inputs.case_sys_id + '';
+  var crNumber    = inputs.cr_number + '';
+  var crSysId     = inputs.cr_sys_id + '';
+  var crState     = inputs.cr_state + '';
 
-  outputs.issue_number   = issueNumber;
-  outputs.case_sys_id    = caseId;
-  outputs.cr_number      = crNumber;
-  outputs.cr_sys_id      = crSysId;
-  outputs.cr_state       = crState;
-  outputs.planned_start  = plannedStart;
-  outputs.planned_end    = plannedEnd;
+  outputs.issue_number = issueNumber;
+  outputs.case_sys_id  = caseId;
+  outputs.cr_number    = crNumber;
+  outputs.cr_sys_id    = crSysId;
+  outputs.cr_state     = crState;
 
   // Only send if the case has a GitHub issue number AND we have a CR number
   outputs.should_send = (issueNumber.length > 0 && crNumber.length > 0) ? 'true' : 'false';
@@ -142,8 +136,6 @@ Click **+** below the Look Up Record step. Select **Script**.
 | `cr_number` | String |
 | `cr_sys_id` | String |
 | `cr_state` | String |
-| `planned_start` | String |
-| `planned_end` | String |
 | `should_send` | String |
 
 Click **Done**.
@@ -175,8 +167,6 @@ Click **+** inside the **then** branch. Select **Script**.
 | `cr_number` | String | Script Step 1 > `cr_number` |
 | `cr_sys_id` | String | Script Step 1 > `cr_sys_id` |
 | `cr_state` | String | Script Step 1 > `cr_state` |
-| `planned_start` | String | Script Step 1 > `planned_start` |
-| `planned_end` | String | Script Step 1 > `planned_end` |
 
 #### Script
 
@@ -208,8 +198,6 @@ Click **+** inside the **then** branch. Select **Script**.
         cr_state:            inputs.cr_state,
         previous_state:      '',
         case_sys_id:         inputs.case_sys_id,
-        planned_start:       inputs.planned_start,
-        planned_end:         inputs.planned_end,
         action:              'created'
       }
     }));
