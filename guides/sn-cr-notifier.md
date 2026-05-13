@@ -278,7 +278,7 @@ Exactly the same as Step A.3:
 
 ### B.4 Add Script Step 1 — Read values
 
-Same input variables as A.4, with one additional variable for previous state:
+Same input variables as A.4, plus `cr_assigned_to`. Previous state is not available as a data pill in Flow Designer — the script reads the audit log instead.
 
 | Variable Name | Type | Data pill to select |
 |---|---|---|
@@ -287,33 +287,42 @@ Same input variables as A.4, with one additional variable for previous state:
 | `cr_number` | String | Trigger > Change Request Record > **Number** |
 | `cr_sys_id` | String | Trigger > Change Request Record > **Sys ID** |
 | `cr_state` | String | Trigger > Change Request Record > **State** |
-| `cr_previous_state` | String | Trigger > Change Request Record > **State (Previous value)** |
 | `cr_assigned_to` | String | Trigger > Change Request Record > **Assigned to** > **Name** |
-
-> "**State (Previous value)**" is available in the data picker for Record Updated triggers.
-> In the data pill panel, expand **Trigger > Change Request Record**, then look for the field with "(Previous value)" suffix.
 
 #### Script
 
 ```javascript
 (function execute(inputs, outputs) {
 
-  var issueNumber   = inputs.github_issue_number + '';
-  var caseId        = inputs.case_sys_id + '';
-  var crNumber      = inputs.cr_number + '';
-  var crSysId       = inputs.cr_sys_id + '';
-  var crState       = inputs.cr_state + '';
-  var previousState = inputs.cr_previous_state + '';
-  var assignedTo    = inputs.cr_assigned_to + '';
+  var issueNumber = inputs.github_issue_number + '';
+  var caseId      = inputs.case_sys_id + '';
+  var crNumber    = inputs.cr_number + '';
+  var crSysId     = inputs.cr_sys_id + '';
+  var crState     = inputs.cr_state + '';
+  var assignedTo  = inputs.cr_assigned_to + '';
 
-  outputs.issue_number    = issueNumber;
-  outputs.case_sys_id     = caseId;
-  outputs.cr_number       = crNumber;
-  outputs.cr_sys_id       = crSysId;
-  outputs.cr_state        = crState;
-  outputs.previous_state  = previousState;
-  outputs.assigned_to     = assignedTo;
-  outputs.should_send     = (issueNumber.length > 0 && crNumber.length > 0) ? 'true' : 'false';
+  // Flow Designer does not expose previous field values as data pills.
+  // Read the previous state from the audit log instead.
+  var previousState = '';
+  var audit = new GlideRecord('sys_audit');
+  audit.addQuery('tablename', 'change_request');
+  audit.addQuery('documentkey', crSysId);
+  audit.addQuery('fieldname', 'state');
+  audit.orderByDesc('sys_created_on');
+  audit.setLimit(1);
+  audit.query();
+  if (audit.next()) {
+    previousState = audit.oldvalue + '';
+  }
+
+  outputs.issue_number   = issueNumber;
+  outputs.case_sys_id    = caseId;
+  outputs.cr_number      = crNumber;
+  outputs.cr_sys_id      = crSysId;
+  outputs.cr_state       = crState;
+  outputs.previous_state = previousState;
+  outputs.assigned_to    = assignedTo;
+  outputs.should_send    = (issueNumber.length > 0 && crNumber.length > 0) ? 'true' : 'false';
 
 })(inputs, outputs);
 ```
@@ -464,4 +473,4 @@ State Change: Assess → Implement
 | `http_status` is `401` | The Github Basic Auth profile has a wrong or expired PAT — update it |
 | `http_status` is `404` | The org/repo in the REST Message Endpoint URL is wrong |
 | `http_status` is `422` | The `sn-cr-notifier.yml` workflow file is not on the default branch |
-| `previous_state` is empty | In the data picker, make sure you selected "State **(Previous value)**" not just "State" |
+| `previous_state` is empty | Check that `sys_audit` is enabled for the `change_request` table — go to **Dictionary > change_request > state** and confirm **Audit** is checked |
