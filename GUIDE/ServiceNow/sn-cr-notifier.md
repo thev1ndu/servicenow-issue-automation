@@ -289,8 +289,10 @@ Same as A.3:
 
 Click **+** below the Look Up Record step. Select **Script**.
 
-Previous state is not available as a data pill in Flow Designer — the script reads the audit log
-to detect whether state actually changed, then sets `action` accordingly.
+The Flow Designer "Record Updated" trigger data pill for `State` captures the value **before** the
+record was saved (the old/previous value), not the new one. The script uses that as `previousState`
+and reads the actual current state directly from the live record — this avoids both the data-pill
+timing issue and any `sys_audit` commit-ordering race.
 
 #### Input Variables
 
@@ -314,26 +316,20 @@ to detect whether state actually changed, then sets `action` accordingly.
   var caseId       = inputs.case_sys_id + '';
   var crNumber     = inputs.cr_number + '';
   var crSysId      = inputs.cr_sys_id + '';
-  var crState      = inputs.cr_state + '';
   var assignedTo   = inputs.cr_assigned_to + '';
   var plannedStart = inputs.cr_planned_start + '';
   var plannedEnd   = inputs.cr_planned_end + '';
 
-  // Flow Designer does not expose previous field values as data pills.
-  // Read the previous state from the audit log instead.
-  var previousState = '';
-  var stateChanged  = false;
-  var audit = new GlideRecord('sys_audit');
-  audit.addQuery('tablename', 'change_request');
-  audit.addQuery('documentkey', crSysId);
-  audit.addQuery('fieldname', 'state');
-  audit.orderByDesc('sys_created_on');
-  audit.setLimit(1);
-  audit.query();
-  if (audit.next()) {
-    previousState = audit.oldvalue + '';
-    stateChanged  = (previousState !== crState);
+  // The state data pill captures the value BEFORE the save (the previous state).
+  // Read the actual current state directly from the record to avoid the off-by-one.
+  var previousState = inputs.cr_state + '';
+  var crState       = '';
+  var crGr = new GlideRecord('change_request');
+  if (crGr.get(crSysId)) {
+    crState = crGr.getValue('state') + '';
   }
+
+  var stateChanged = (previousState !== crState);
 
   // state_changed takes priority; fall back to dates_updated
   var action = stateChanged ? 'state_changed' : 'dates_updated';
@@ -545,4 +541,4 @@ State Change: Assess → Implement
 | `http_status` is `401` | The Github Basic Auth profile has a wrong or expired PAT — update it |
 | `http_status` is `404` | The org/repo in the REST Message Endpoint URL is wrong |
 | `http_status` is `422` | The `sn-cr-notifier.yml` workflow file is not on the default branch |
-| `previous_state` is empty | Check that `sys_audit` is enabled for the `change_request` table — go to **Dictionary > change_request > state** and confirm **Audit** is checked |
+| States shown are one step behind the active state | The script uses the `cr_state` data pill as `previousState` and reads current state via `GlideRecord`. If the GlideRecord read returns empty, confirm the `cr_sys_id` input variable is wired to `Trigger > Change Request Record > Sys ID` |
