@@ -34,7 +34,7 @@ jobs:
             const caseRef = caseNumber ? ` — Case ${caseNumber}` : '';
             const newlineIndex = noteText.indexOf('\n');
             const formattedNote = newlineIndex !== -1
-              ? `**${noteText.slice(0, newlineIndex)}**${noteText.slice(newlineIndex)}`
+              ? `**${noteText.slice(0, newlineIndex)}**\n${noteText.slice(newlineIndex)}`
               : `**${noteText}**`;
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber,
