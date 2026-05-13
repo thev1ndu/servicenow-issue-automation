@@ -437,9 +437,9 @@ Click **Save**, then **Activate**.
 
 ---
 
-## Flow C — Planned Dates Updated (Scheduled State Only)
+## Flow C — Planned Dates Updated
 
-This flow fires only when the **Planned start date** or **Planned end date** changes while the CR is in **Scheduled** state. It posts the updated change window to GitHub. It does **not** fire for any other state.
+This flow fires whenever **Planned start date** or **Planned end date** changes on any linked Change Request, regardless of state. It posts the updated change window to GitHub.
 
 ### C.1 Create the Flow
 
@@ -460,7 +460,6 @@ Click **Add a trigger**.
 3. Under **Condition**, click **Add Filters**:
    - Field: `Planned start date` | Operator: `changes`
    - OR Field: `Planned end date` | Operator: `changes`
-   - AND Field: `State` | Operator: `is` | Value: `Scheduled`
    - AND Field: `Parent` | Operator: `is not empty`
 
 Click **Done**.

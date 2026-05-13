@@ -57,7 +57,7 @@ jobs:
             };
             const plannedStart = formatSNDate(p.planned_start);
             const plannedEnd   = formatSNDate(p.planned_end);
-            const cwBlock = (crState === 'Scheduled' && (plannedStart || plannedEnd))
+            const cwBlock = (plannedStart || plannedEnd)
               ? `\n> ⏰ **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}`
               : '';
             if (!issueNumber || !crNumber || !action) {
