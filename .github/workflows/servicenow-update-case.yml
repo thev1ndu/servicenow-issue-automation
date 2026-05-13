@@ -1,4 +1,4 @@
-name: ServiceNow · update case
+name: ServiceNow · Update Case
 on:
   workflow_call:
     inputs:

@@ -1,4 +1,4 @@
-name: Issue → ServiceNow
+name: GitHub Issue → ServiceNow
 on:
   issues:
     types: [opened, edited, labeled]

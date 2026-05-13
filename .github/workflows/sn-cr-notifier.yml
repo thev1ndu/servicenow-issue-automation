@@ -1,4 +1,4 @@
-name: ServiceNow CR → GitHub
+name: ServiceNow Change Request → GitHub
 
 on:
   repository_dispatch:
