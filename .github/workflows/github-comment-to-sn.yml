@@ -23,7 +23,7 @@ jobs:
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber
             });
             const caseComment = comments.find(c =>
-              c.user.type === 'Bot' && c.body.includes('ServiceNow Case Created Successfully')
+              c.user.type === 'Bot' && c.body.includes('ServiceNow Case Created')
             );
             if (!caseComment) { core.setOutput('has_case', 'false'); return; }
             const urlMatch = caseComment.body.match(/sys_id=([a-f0-9]{32})/);
