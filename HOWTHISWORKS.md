@@ -96,7 +96,6 @@ When a **Change Request is created** or its **state changes**, ServiceNow sends 
     "cr_number": "CHG0038376",
     "cr_sys_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "cr_state": "New",
-    "cr_environment": "Development",
     "case_sys_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   }
 }

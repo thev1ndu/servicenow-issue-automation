@@ -103,7 +103,6 @@ Click **+** below the Look Up Record step. Select **Script**.
 | `cr_number` | String | Trigger > Change Request Record > **Number** |
 | `cr_sys_id` | String | Trigger > Change Request Record > **Sys ID** |
 | `cr_state` | String | Trigger > Change Request Record > **State** |
-| `cr_environment` | String | Trigger > Change Request Record > **Environment** *(skip if the field does not exist on your CR table)* |
 
 #### Script
 
@@ -115,14 +114,11 @@ Click **+** below the Look Up Record step. Select **Script**.
   var crNumber    = inputs.cr_number + '';
   var crSysId     = inputs.cr_sys_id + '';
   var crState     = inputs.cr_state + '';
-  var crEnv       = (inputs.cr_environment + '') || 'Not specified';
-
   outputs.issue_number   = issueNumber;
   outputs.case_sys_id    = caseId;
   outputs.cr_number      = crNumber;
   outputs.cr_sys_id      = crSysId;
   outputs.cr_state       = crState;
-  outputs.cr_environment = crEnv;
 
   // Only send if the case has a GitHub issue number AND we have a CR number
   outputs.should_send = (issueNumber.length > 0 && crNumber.length > 0) ? 'true' : 'false';
@@ -139,7 +135,6 @@ Click **+** below the Look Up Record step. Select **Script**.
 | `cr_number` | String |
 | `cr_sys_id` | String |
 | `cr_state` | String |
-| `cr_environment` | String |
 | `should_send` | String |
 
 Click **Done**.
@@ -171,7 +166,6 @@ Click **+** inside the **then** branch. Select **Script**.
 | `cr_number` | String | Script Step 1 > `cr_number` |
 | `cr_sys_id` | String | Script Step 1 > `cr_sys_id` |
 | `cr_state` | String | Script Step 1 > `cr_state` |
-| `cr_environment` | String | Script Step 1 > `cr_environment` |
 
 #### Script
 
@@ -202,7 +196,6 @@ Click **+** inside the **then** branch. Select **Script**.
         cr_sys_id:           inputs.cr_sys_id,
         cr_state:            inputs.cr_state,
         previous_state:      '',
-        cr_environment:      inputs.cr_environment,
         case_sys_id:         inputs.case_sys_id,
         action:              'created'
       }
@@ -323,7 +316,7 @@ Same input variables as A.4, with one additional variable for previous state:
 
 #### Output Variables
 
-Same as A.4 outputs, replacing `cr_environment` with `previous_state`:
+#### Output Variables
 
 | Variable Name | Type |
 |---|---|
@@ -374,7 +367,6 @@ Same structure as A.6 with this script:
         cr_sys_id:           inputs.cr_sys_id,
         cr_state:            inputs.cr_state,
         previous_state:      inputs.previous_state,
-        cr_environment:      '',
         case_sys_id:         inputs.case_sys_id,
         action:              'state_changed'
       }

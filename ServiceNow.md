@@ -419,7 +419,6 @@ Fires after a Change Request state changes.
         cr_number:           current.number.toString(),
         cr_sys_id:           current.sys_id.toString(),
         cr_state:            current.state.getDisplayValue(),
-        cr_environment:      current.u_environment ? current.u_environment.getDisplayValue() : '',
         case_sys_id:         parentCase.sys_id.toString(),
         action:              'state_changed',
         previous_state:      previous.state.getDisplayValue()

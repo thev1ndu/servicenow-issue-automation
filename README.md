@@ -75,8 +75,8 @@ In your repo: **Settings → Secrets and variables → Actions → New repositor
 
 | Secret name | Value |
 |-------------|-------|
-| `SERVICENOW_URL` | Full URL to the Scripted REST endpoint, e.g. `https://<instance>.service-now.com/api/<scope>/github_case/v1/case` |
-| `SERVICENOW_UI_URL` | Base instance URL, e.g. `https://<instance>.service-now.com` |
+| `SERVICENOW_URL` | Full URL to the Scripted REST endpoint, e.g. `https://wso2sndev.service-now.com/api/wso2/gh_integration/case` |
+| `SERVICENOW_UI_URL` | Base instance URL, e.g. `https://wso2sndev.service-now.com` |
 | `SERVICENOW_USERNAME` | ServiceNow user with REST access |
 | `SERVICENOW_PASSWORD` | Password for the above user |
 
@@ -260,7 +260,6 @@ GitHubRepositoryDispatch.prototype = {
     "cr_number": "CHG0001001",
     "cr_sys_id": "a1b2c3d4e5f6789012345678901234ab",
     "cr_state": "New",
-    "cr_environment": "Production",
     "case_sys_id": "b2c3d4e5f6789012345678901234abcd"
   }
 }
@@ -290,7 +289,6 @@ GitHubRepositoryDispatch.prototype = {
 | `cr_number` | Yes | e.g. `CHG0001234` |
 | `cr_sys_id` | Recommended | For direct link in comment |
 | `cr_state` | Recommended | Display value |
-| `cr_environment` | Optional | Defaults to `Not specified` |
 | `case_sys_id` | Recommended | GitHub queries linked CRs using this |
 | `previous_state` | For `state_changed` | Prior state display value |
 

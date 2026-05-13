@@ -51,8 +51,7 @@ curl -i -X POST \
     "action": "created",
     "cr_number": "CHG0000001",
     "cr_sys_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "cr_state": "New",
-    "cr_environment": "Development"
+    "cr_state": "New"
   }
 }
 JSON
@@ -122,7 +121,6 @@ curl -i -X POST \
     "cr_number": "CHG0000002",
     "cr_sys_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "cr_state": "New",
-    "cr_environment": "Development",
     "is_first_cr": false,
     "total_crs": 2
   }

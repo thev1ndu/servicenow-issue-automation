@@ -188,7 +188,6 @@ Fires when a Change Request's state field changes.
         cr_number:           current.number.toString(),
         cr_sys_id:           current.sys_id.toString(),
         cr_state:            current.state.getDisplayValue(),
-        cr_environment:      current.u_environment ? current.u_environment.getDisplayValue() : '',
         case_sys_id:         current.parent.toString(),
         action:              'state_changed',
         previous_state:      previous.state.getDisplayValue()
@@ -214,7 +213,6 @@ var result = d.send('servicenow-cr-update', {
     cr_sys_id:           gs.generateGUID(),
     cr_state:            'New',
     previous_state:      'Draft',
-    cr_environment:      'Development',
     case_sys_id:         gs.generateGUID()
 });
 gs.info(JSON.stringify(result));
