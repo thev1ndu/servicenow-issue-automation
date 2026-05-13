@@ -26,7 +26,7 @@ jobs:
               core.warning('Missing issue_number or note_text — skipping');
               return;
             }
-            if (/GitHub comment from @/.test(noteText)) {
+            if (/\(GitHub Comment\)/.test(noteText)) {
               core.info('Note originated from GitHub — skipping to prevent echo loop');
               return;
             }
