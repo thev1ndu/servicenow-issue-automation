@@ -58,7 +58,7 @@ jobs:
             const plannedStart = formatSNDate(p.planned_start);
             const plannedEnd   = formatSNDate(p.planned_end);
             const cwBlock = (plannedStart || plannedEnd)
-              ? `\n> ⏰ **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}`
+              ? `\n\n ⏰ **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}`
               : '';
             if (!issueNumber || !crNumber || !action) {
               core.warning('Missing github_issue_number, cr_number, or action — skipping');
@@ -108,6 +108,6 @@ jobs:
             } else if (action === 'dates_updated') {
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `💬 **ServiceNow Change Request — Schedule Updated [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}\n> **State:** ${stateTransition}${assignedBlock}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
+                body: `💬 **ServiceNow Change Request — Schedule Updated [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **State:** ${stateTransition}${assignedBlock}\n\n⏰ **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
               });
             }
