@@ -41,7 +41,7 @@ jobs:
             const caseRef = caseUrl ? `[${caseNumber}](${caseUrl})` : (caseNumber || 'case');
 
             const toIST = d => new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
-            const ts = toIST(new Date()).toUTCString().replace('GMT', 'IST');
+            const ts = toIST(new Date()).toISOString().replace('T', ' ').slice(0, 19) + ' IST';
 
             if (action === 'closed') {
               const resolutionBlock = resolution
@@ -52,7 +52,7 @@ jobs:
                 owner: context.repo.owner,
                 repo:  context.repo.repo,
                 issue_number: issueNumber,
-                body: `✅ **ServiceNow Case Closed — ${caseRef}**\n\n> Case has been closed in ServiceNow.${resolutionBlock}\n> 🕐 **Closed:** ${ts}\n\n---\n*Closed by ${snUser} via ServiceNow*`
+                body: `✅ **ServiceNow Case Closed — ${caseRef}** [${ts}]\n\n> Case has been closed in ServiceNow.${resolutionBlock}\n\n---\n*Closed by ${snUser} via ServiceNow*`
               });
 
               await github.rest.issues.update({
@@ -70,7 +70,7 @@ jobs:
                 owner: context.repo.owner,
                 repo:  context.repo.repo,
                 issue_number: issueNumber,
-                body: `👤 **ServiceNow Case Assigned — ${caseRef}**\n\n> **Assigned to:** ${assignedTo}\n> 🕐 **Updated:** ${ts}\n\n---\n*Assigned by ${snUser} via ServiceNow*`
+                body: `👤 **ServiceNow Case Assigned — ${caseRef}** [${ts}]\n\n> **Assigned to:** ${assignedTo}\n\n---\n*Assigned by ${snUser} via ServiceNow*`
               });
 
               core.info(`GitHub issue #${issueNumber} notified of assignment to ${assignedTo}`);
