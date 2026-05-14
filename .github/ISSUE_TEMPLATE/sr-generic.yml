@@ -1,0 +1,74 @@
+name: Service Request-Generic
+description: Request for information related to a project
+labels: ["Type/ServiceRequest"]
+body:
+
+  - type: input
+    id: template_marker
+    attributes:
+      label: "Template Marker"
+      description: "Do not remove or modify. Used for validation."
+      value: "SR Generic"
+    validations:
+      required: true
+
+  - type: input
+    id: catalog_item
+    attributes:
+      label: "ServiceNow Catalog Item"
+      description: "Do not modify. Specifies the catalog item in ServiceNow."
+      value: "General Requests"
+    validations:
+      required: true
+
+  - type: input
+    id: case_type
+    attributes:
+      label: "Case Type"
+      description: "Do not modify. Specifies the case type in ServiceNow."
+      value: "Service Request"
+    validations:
+      required: true
+
+  - type: textarea
+    id: u_request_details
+    attributes:
+      label: Request Details
+      description: Provide a brief summary of your request
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Provide details of the change required
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How urgent is this request?
+      options:
+        - Moderate
+        - Critical
+        - High
+        - Low
+    validations:
+      required: true
+
+  - type: dropdown
+    id: u_project_environment
+    attributes:
+      label: Environment Details
+      description: Select one or more environments
+      options:
+        - Development
+        - Staging
+        - Production
+      default: 0
+      multiple: true
+    validations:
+      required: true

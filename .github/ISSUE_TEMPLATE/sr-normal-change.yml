@@ -1,0 +1,151 @@
+name: Service Request-Normal Change Generic
+description: Request a normal change service related to the project
+title: "[SR-Change]: "
+labels: ["SRType/Normal Change", "CatalogueItem/Generic Requests"]
+body:
+
+  - type: input
+    id: template_marker
+    attributes:
+      label: "Template Marker"
+      description: "Do not remove or modify. Used for validation."
+      value: "SR Generic"
+    validations:
+      required: true
+
+  - type: textarea
+    id: u_short_description
+    attributes:
+      label: Short Description
+      description: Provide a brief description of the request
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Provide a description of the request
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How urgent is this request?
+      options:
+        - Critical
+        - High
+        - Moderate
+        - Low
+    validations:
+      required: true
+
+  - type: dropdown
+    id: u_impact
+    attributes:
+      label: Impact
+      description: What is the expected impact of this request?
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: textarea
+    id: u_impact_description_overall
+    attributes:
+      label: Impact Description (Overall)
+      description: Describe overall system/application impact
+      placeholder: "**Overall Impact Analysis:**"
+    validations:
+      required: true
+
+  - type: textarea
+    id: u_impact_description_customer
+    attributes:
+      label: Impact Description (Customer)
+      description: Describe customer/business impact
+      placeholder: "**Customer Impact Analysis:**"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: u_project_environment
+    attributes:
+      label: Environment Details
+      description: Select one or more environments
+      options:
+        - Development
+        - Staging
+        - Production
+      default: 0
+      multiple: true
+    validations:
+      required: true
+
+  - type: textarea
+    id: u_affected_component
+    attributes:
+      label: Affected Component
+      description: Specify the affected component(s)
+    validations:
+      required: true
+
+  - type: textarea
+    id: u_affected_services
+    attributes:
+      label: Affected Services
+      description: Specify the affected service(s)
+    validations:
+      required: true
+
+  - type: textarea
+    id: u_service_outage
+    attributes:
+      label: Service Outage/Downtime
+      description: Describe the details of the potential outage. Mention if it will be a full or partial service outage, or just a slowness.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: u_maintenance_window
+    attributes:
+      label: Is a maintenance window required or not
+      description: Select whether a maintenance window is required for this change.
+      options:
+        - "Yes"
+        - "No"
+        - "TBD"
+    validations:
+      required: true
+
+  - type: textarea
+    id: u_implementation_plan
+    attributes:
+      label: Implementation Plan
+      description: Provide the implementation plan
+    validations:
+      required: true
+
+  - type: textarea
+    id: u_test_plan
+    attributes:
+      label: Test Plan
+      description: Provide the test plan
+    validations:
+      required: true
+
+  - type: dropdown
+    id: u_monitoring_checks
+    attributes:
+      label: Monitoring Checks
+      description: Have you verified that all the monitoring checks in staging have passed?
+      options:
+        - "Yes"
+        - "No"
+        - "Not Applicable"
+    validations:
+      required: true

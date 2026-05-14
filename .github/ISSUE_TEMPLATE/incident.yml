@@ -1,0 +1,81 @@
+name: Bug Report / Incident
+description: Report a bug or system incident
+labels: ["Type/Incident", "bug"]
+body:
+
+  - type: input
+    id: template_marker
+    attributes:
+      label: "Template Marker"
+      description: "Do not remove or modify."
+      value: "Incident Report"
+    validations:
+      required: true
+
+  - type: input
+    id: catalog_item
+    attributes:
+      label: "ServiceNow Catalog Item"
+      description: "Do not modify."
+      value: "Incident Management"
+    validations:
+      required: true
+
+  - type: input
+    id: case_type
+    attributes:
+      label: "Case Type"
+      description: "Do not modify."
+      value: "Incident"
+    validations:
+      required: true
+
+  - type: textarea
+    id: u_request_details
+    attributes:
+      label: Issue Summary
+      description: Brief description of the bug or incident
+      placeholder: "e.g., Application crashes when uploading large files"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Detailed Description
+      description: |
+        Please provide:
+        • Steps to reproduce
+        • Expected behavior
+        • Actual behavior
+        • Error messages (if any)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Severity
+      description: How severe is this issue?
+      options:
+        - Critical (System Down)
+        - High (Major Impact)
+        - Moderate (Minor Impact)
+        - Low (Cosmetic)
+      default: 2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: u_project_environment
+    attributes:
+      label: Affected Environments
+      description: "Select all affected environments (Ctrl/Cmd + Click)"
+      options:
+        - Development
+        - Staging
+        - Production
+        - UAT
+      multiple: true
+    validations:
+      required: true
