@@ -56,6 +56,8 @@ jobs:
                 'impact description (overall)':            'u_impact_description_overall',
                 'impact description (customer)':           'u_impact_description_customer',
                 'environment details':                     'u_project_environment',
+                'affected environments':                   'u_project_environment',
+                'issue summary':                           'u_request_details',
                 'affected component':                      'u_affected_component',
                 'affected services':                       'u_affected_services',
                 'service outage/downtime':                 'u_service_outage',
@@ -78,7 +80,7 @@ jobs:
             }
             const allFields = extractAllFields(body);
             const priorityMap = { Critical: '1 - Critical', High: '2 - High', Moderate: '3 - Moderate', Low: '4 - Low' };
-            const rawPriority = allFields.priority || 'Moderate';
+            const rawPriority = (allFields.priority || 'Moderate').replace(/\s*\(.*?\)/g, '').trim();
             allFields.priority = priorityMap[rawPriority] || '3 - Moderate';
             if (allFields.u_project_environment) {
               allFields.u_project_environment = allFields.u_project_environment.split(',').map(e => e.trim()).filter(Boolean).join(', ');
