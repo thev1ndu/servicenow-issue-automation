@@ -30,7 +30,7 @@ jobs:
               '-5': 'New',
               '-4': 'Assess',
               '-3': 'Authorize',
-              '-2': 'Customer Approval',
+              '-2': 'CAB Approval',
               '-1': 'Scheduled',
               '0':  'Implement',
               '1':  'Review',
