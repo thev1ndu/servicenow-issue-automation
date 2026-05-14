@@ -289,10 +289,8 @@ Same as A.3:
 
 Click **+** below the Look Up Record step. Select **Script**.
 
-The Flow Designer "Record Updated" trigger data pill for `State` captures the value **before** the
-record was saved (the old/previous value), not the new one. The script uses that as `previousState`
-and reads the actual current state directly from the live record — this avoids both the data-pill
-timing issue and any `sys_audit` commit-ordering race.
+The script reads the current state directly from the live record via `GlideRecord` and determines
+whether the trigger was a state change or a date update. Previous state is not tracked or sent.
 
 #### Input Variables
 
@@ -320,26 +318,23 @@ timing issue and any `sys_audit` commit-ordering race.
   var plannedStart = inputs.cr_planned_start + '';
   var plannedEnd   = inputs.cr_planned_end + '';
 
-  // The state data pill captures the value BEFORE the save (the previous state).
-  // Read the actual current state directly from the record to avoid the off-by-one.
-  var previousState = inputs.cr_state + '';
-  var crState       = '';
+  // Read current state directly from the live record.
+  // The data pill captures the before value; GlideRecord gives the current (post-save) value.
+  var dataPillState = inputs.cr_state + '';
+  var crState       = dataPillState;
   var crGr = new GlideRecord('change_request');
   if (crGr.get(crSysId)) {
     crState = crGr.getValue('state') + '';
   }
 
-  var stateChanged = (previousState !== crState);
-
   // state_changed takes priority; fall back to dates_updated
-  var action = stateChanged ? 'state_changed' : 'dates_updated';
+  var action = (dataPillState !== crState) ? 'state_changed' : 'dates_updated';
 
   outputs.issue_number   = issueNumber;
   outputs.case_sys_id    = caseId;
   outputs.cr_number      = crNumber;
   outputs.cr_sys_id      = crSysId;
   outputs.cr_state       = crState;
-  outputs.previous_state = previousState;
   outputs.assigned_to    = assignedTo;
   outputs.planned_start  = plannedStart;
   outputs.planned_end    = plannedEnd;
@@ -358,7 +353,6 @@ timing issue and any `sys_audit` commit-ordering race.
 | `cr_number` | String |
 | `cr_sys_id` | String |
 | `cr_state` | String |
-| `previous_state` | String |
 | `assigned_to` | String |
 | `planned_start` | String |
 | `planned_end` | String |
@@ -394,7 +388,6 @@ Click **+** inside the **then** branch. Select **Script**.
 | `cr_number` | String | Script Step 1 > `cr_number` |
 | `cr_sys_id` | String | Script Step 1 > `cr_sys_id` |
 | `cr_state` | String | Script Step 1 > `cr_state` |
-| `previous_state` | String | Script Step 1 > `previous_state` |
 | `assigned_to` | String | Script Step 1 > `assigned_to` |
 | `planned_start` | String | Script Step 1 > `planned_start` |
 | `planned_end` | String | Script Step 1 > `planned_end` |
@@ -428,7 +421,6 @@ Click **+** inside the **then** branch. Select **Script**.
         cr_number:           inputs.cr_number,
         cr_sys_id:           inputs.cr_sys_id,
         cr_state:            inputs.cr_state,
-        previous_state:      inputs.previous_state,
         assigned_to:         inputs.assigned_to,
         case_sys_id:         inputs.case_sys_id,
         planned_start:       inputs.planned_start,
@@ -541,4 +533,4 @@ State Change: Assess → Implement
 | `http_status` is `401` | The Github Basic Auth profile has a wrong or expired PAT — update it |
 | `http_status` is `404` | The org/repo in the REST Message Endpoint URL is wrong |
 | `http_status` is `422` | The `sn-cr-notifier.yml` workflow file is not on the default branch |
-| States shown are one step behind the active state | The script uses the `cr_state` data pill as `previousState` and reads current state via `GlideRecord`. If the GlideRecord read returns empty, confirm the `cr_sys_id` input variable is wired to `Trigger > Change Request Record > Sys ID` |
+| States shown are one step behind / wrong state shown | The script reads the new state from `sys_audit`. If it falls back to the previous state, confirm `cr_sys_id` is wired to `Trigger > Change Request Record > Sys ID` and that the `sys_audit` table is enabled for the `change_request` table in `sys_audit_field` |

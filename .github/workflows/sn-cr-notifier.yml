@@ -43,7 +43,6 @@ jobs:
             const crState = resolveState(p.cr_state);
             const caseSysId = p.case_sys_id || '';
             const action = p.action;
-            const previousState = resolveState(p.previous_state || '');
             const assignedTo = (p.assigned_to && p.assigned_to !== 'null') ? p.assigned_to : '';
             const servicenowUiUrl = process.env.SERVICENOW_UI_URL;
             const crUrl = crSysId ? `${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${crSysId}` : `#`;
@@ -85,9 +84,6 @@ jobs:
               ? `\n_CR index: ${p.is_first_cr === undefined ? '—' : p.is_first_cr}, total: ${p.total_crs ?? '—'}_\n`
               : '';
             const assignedBlock = assignedTo ? `\n> **Assigned to:** ${assignedTo}` : '';
-            const stateTransition = previousState && previousState !== crState
-              ? `${previousState} → **${crState}**`
-              : `**${crState}**`;
             if (action === 'created') {
               let allCRs = await fetchAllCRs(caseSysId);
               if (allCRs.length === 0) {
@@ -103,11 +99,11 @@ jobs:
             } else if (action === 'state_changed') {
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `💬 **ServiceNow Change Request — Updated [#${crNumber}](${crUrl})** [${timestamp}]\n\n> ${previousState} → **${crState}**${assignedBlock}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
+                body: `💬 **ServiceNow Change Request — Updated [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **State:** **${crState}**${assignedBlock}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
               });
             } else if (action === 'dates_updated') {
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `💬 **ServiceNow Change Request — Schedule Updated [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **State:** ${stateTransition}${assignedBlock}\n\n⏰ **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
+                body: `💬 **ServiceNow Change Request — Schedule Updated [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **State:** **${crState}**${assignedBlock}\n\n⏰ **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
               });
             }
