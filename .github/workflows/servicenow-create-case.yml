@@ -249,11 +249,12 @@ jobs:
             const now = new Date();
             const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
             const ts = ist.toISOString().replace('T', ' ').slice(0, 19) + ' IST';
+            const wso2CaseId = response.u_wso2_case_id || '';
             let allFields = {};
             try { allFields = JSON.parse(process.env.ALL_FIELDS_JSON || '{}'); } catch (_) {}
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNum,
-              body: `✅ **ServiceNow Case Created — ${caseLink}** [${ts}]\n\n> **Catalog:** ${{ steps.extract_fields.outputs.catalog_item }} · **Type:** ${{ steps.extract_fields.outputs.case_type }}\n> **Priority:** ${{ steps.extract_fields.outputs.priority }} · **Environment:** ${{ steps.extract_fields.outputs.environment }}\n> **Project:** ${{ steps.load_config.outputs.project_name }}\n> **Product:** ${{ steps.load_config.outputs.product }}\n> 🕐 **Notified:** ${ts}\n\n_${Object.keys(allFields).length} fields auto-extracted._\n\n---\n*Automated via GitHub Actions*`
+              body: `✅ **ServiceNow Case Created — ${caseLink}** [${ts}]\n\n> **WSO2 Case ID:** ${wso2CaseId}\n> **Catalog:** ${{ steps.extract_fields.outputs.catalog_item }}\n> **Type:** ${{ steps.extract_fields.outputs.case_type }}\n> **Priority:** ${{ steps.extract_fields.outputs.priority }}\n> **Environment:** ${{ steps.extract_fields.outputs.environment }}\n> **Project:** ${{ steps.load_config.outputs.project_name }}\n> **Product:** ${{ steps.load_config.outputs.product }}\n\n_${Object.keys(allFields).length} fields auto-extracted._\n\n---\n*Automated via GitHub Actions*`
             });
 
       - if: failure() && steps.get_issue.outputs.should_process == 'true'
