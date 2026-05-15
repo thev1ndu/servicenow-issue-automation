@@ -24,28 +24,23 @@ jobs:
             const p = context.payload.client_payload || {};
             core.info('servicenow-cr-update payload: ' + JSON.stringify(p));
             const issueNumber = p.github_issue_number;
-            const crNumber = p.cr_number;
-            const crSysId = p.cr_sys_id;
+            const crNumber    = p.cr_number;
+            const crSysId     = p.cr_sys_id;
             const STATE_MAP = {
               '-5': 'New',
               '-4': 'Assess',
               '-3': 'Authorize',
-              '-2': 'CAB Approval',
-              '-1': 'Scheduled',
-              '0':  'Implement',
-              '1':  'Review',
-              '2':  'Customer Review',
-              '3':  'Rollback',
-              '4':  'Closed',
-              '5':  'Canceled',
+              '-2': 'Scheduled (CAB Approved)',
+              '-1': 'Implement',
+              '0':  'Review',
+              '3':  'Closed',
             };
-            const resolveState = s => STATE_MAP[String(s).trim()] || s;
-            const crState = resolveState(p.cr_state);
-            const caseSysId = p.case_sys_id || '';
-            const action = p.action;
-            const assignedTo    = (p.assigned_to    && p.assigned_to    !== 'null') ? p.assigned_to    : '';
-            const authorizedBy  = (p.authorized_by  && p.authorized_by  !== 'null') ? p.authorized_by  : '';
-            const cabApprovers  = (p.cab_approvers   && p.cab_approvers  !== 'null') ? p.cab_approvers  : '';
+            const SKIP_STATES = new Set(); // no transient states to skip now
+            const rawState = String(p.cr_state || '').trim();
+            const crState  = STATE_MAP[rawState] || rawState;
+            const caseSysId   = p.case_sys_id || '';
+            const action      = p.action;
+            const assignedTo  = (p.assigned_to && p.assigned_to !== 'null') ? p.assigned_to : '';
             const servicenowUiUrl = process.env.SERVICENOW_UI_URL;
             const crUrl = crSysId ? `${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${crSysId}` : `#`;
             const toIST = d => new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
@@ -65,8 +60,12 @@ jobs:
               core.warning('Missing github_issue_number, cr_number, or action — skipping');
               return;
             }
-            if (action !== 'created' && action !== 'state_changed' && action !== 'dates_updated' && action !== 'approval_updated') {
+            if (action !== 'created' && action !== 'state_changed' && action !== 'dates_updated') {
               core.warning('Unknown action: ' + action);
+              return;
+            }
+            if (SKIP_STATES.has(rawState)) {
+              core.info(`Skipping comment for transient state ${rawState} on issue #${issueNumber}`);
               return;
             }
             async function fetchAllCRs(parentSysId) {
@@ -92,7 +91,7 @@ jobs:
                 allCRs = [{ number: crNumber, sys_id: crSysId, state: crState }];
               }
               const crListMarkdown = allCRs.map(cr =>
-                `- [${cr.number}](${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${cr.sys_id}) - ${resolveState(cr.state) || 'Unknown'}`
+                `- [${cr.number}](${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${cr.sys_id}) - ${STATE_MAP[String(cr.state).trim()] || cr.state || 'Unknown'}`
               ).join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
@@ -107,15 +106,5 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
                 body: `💬 **ServiceNow Change Request — Schedule Updated [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **State:** **${crState}**${assignedBlock}\n\n⏰ **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
-              });
-            } else if (action === 'approval_updated') {
-              const isAuthorize   = crState === 'Authorize';
-              const approvalLabel = isAuthorize ? 'Authorized' : 'CAB Approved';
-              const approvalBlock = isAuthorize
-                ? (authorizedBy ? `\n> **Authorized by:** ${authorizedBy}` : '')
-                : (cabApprovers  ? `\n> **CAB Approved by:** ${cabApprovers}` : '');
-              await github.rest.issues.createComment({
-                owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body: `💬 **ServiceNow Change Request — ${approvalLabel} [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **State:** **${crState}**${approvalBlock}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
               });
             }
