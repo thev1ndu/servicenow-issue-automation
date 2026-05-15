@@ -27,15 +27,3 @@
 - name: "validation-failed"
   color: "b60205"
   description: "Template failed validation — check the bot comment for details"
-
-- name: "Change-Tracking/Application"
-  color: "1d76db"
-  description: "Change tracking: Application change"
-
-- name: "Change-Tracking/Maintenance"
-  color: "0075ca"
-  description: "Change tracking: Maintenance"
-
-- name: "Change-Tracking/Infrastructure"
-  color: "5319e7"
-  description: "Change tracking: Infrastructure change"
