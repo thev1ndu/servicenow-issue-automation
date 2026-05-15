@@ -38,7 +38,7 @@ jobs:
             const caseUrl = caseSysId && snUiUrl
               ? `${snUiUrl}/now/nav/ui/classic/params/target/sn_customerservice_case.do?sys_id=${caseSysId}&sysparm_view=wso2_cs_generic`
               : '';
-            const caseRef = caseUrl ? `[${caseNumber}](${caseUrl})` : (caseNumber || 'case');
+            const caseRef = caseUrl ? `[#${caseNumber}](${caseUrl})` : (caseNumber || 'case');
 
             const toIST = d => new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
             const ts = toIST(new Date()).toISOString().replace('T', ' ').slice(0, 19) + ' IST';
