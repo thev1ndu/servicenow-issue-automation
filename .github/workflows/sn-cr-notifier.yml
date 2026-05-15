@@ -60,7 +60,7 @@ jobs:
               core.warning('Missing github_issue_number, cr_number, or action — skipping');
               return;
             }
-            if (action !== 'created' && action !== 'state_changed' && action !== 'dates_updated' && action !== 'approval_updated') {
+            if (action !== 'created' && action !== 'state_changed' && action !== 'dates_updated') {
               core.warning('Unknown action: ' + action);
               return;
             }
@@ -106,24 +106,5 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
                 body: `💬 **ServiceNow Change Request — Schedule Updated [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **State:** **${crState}**${assignedBlock}\n\n⏰ **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
-              });
-            } else if (action === 'approval_updated') {
-              const approvalType  = String(p.approval_type  || '');
-              const authorizedBy  = String(p.authorized_by  || '');
-              const cabApprovers  = String(p.cab_approvers  || '');
-              let body;
-              if (approvalType === 'authorized' || authorizedBy) {
-                const who = authorizedBy || '—';
-                body = `🔐 **ServiceNow Change Request — Authorized [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **Authorized by:** ${who}\n\n---\n*Automatically notified by ServiceNow*`;
-              } else if (approvalType === 'cab_approved' || cabApprovers) {
-                const who = cabApprovers || '—';
-                body = `✅ **ServiceNow Change Request — CAB Approved [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **CAB Approved by:** ${who}\n\n---\n*Automatically notified by ServiceNow*`;
-              } else {
-                core.warning('approval_updated: neither authorized_by nor cab_approvers provided — skipping');
-                return;
-              }
-              await github.rest.issues.createComment({
-                owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
-                body
               });
             }
