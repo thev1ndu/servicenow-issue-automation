@@ -105,6 +105,7 @@ Click **+** below the Look Up Record step. Select **Script**.
 | `cr_number` | String | Trigger > Change Request Record > **Number** |
 | `cr_sys_id` | String | Trigger > Change Request Record > **Sys ID** |
 | `cr_state` | String | Trigger > Change Request Record > **State** |
+| `account_name` | String | Look Up Record > Customer Service Case Record > **Account** > **Name** |
 
 #### Script
 
@@ -116,12 +117,14 @@ Click **+** below the Look Up Record step. Select **Script**.
   var crNumber    = inputs.cr_number + '';
   var crSysId     = inputs.cr_sys_id + '';
   var crState     = inputs.cr_state + '';
+  var accountName = inputs.account_name + '';
 
-  outputs.issue_number = issueNumber;
-  outputs.case_sys_id  = caseId;
-  outputs.cr_number    = crNumber;
-  outputs.cr_sys_id    = crSysId;
-  outputs.cr_state     = crState;
+  outputs.issue_number  = issueNumber;
+  outputs.case_sys_id   = caseId;
+  outputs.cr_number     = crNumber;
+  outputs.cr_sys_id     = crSysId;
+  outputs.cr_state      = crState;
+  outputs.account_name  = accountName;
 
   // Only send if the case has a GitHub issue number AND we have a CR number
   outputs.should_send = (issueNumber.length > 0 && crNumber.length > 0) ? 'true' : 'false';
@@ -138,6 +141,7 @@ Click **+** below the Look Up Record step. Select **Script**.
 | `cr_number` | String |
 | `cr_sys_id` | String |
 | `cr_state` | String |
+| `account_name` | String |
 | `should_send` | String |
 
 Click **Done**.
@@ -169,6 +173,7 @@ Click **+** inside the **then** branch. Select **Script**.
 | `cr_number` | String | Script Step 1 > `cr_number` |
 | `cr_sys_id` | String | Script Step 1 > `cr_sys_id` |
 | `cr_state` | String | Script Step 1 > `cr_state` |
+| `account_name` | String | Script Step 1 > `account_name` |
 
 #### Script
 
@@ -184,15 +189,14 @@ Click **+** inside the **then** branch. Select **Script**.
       return;
     }
 
-    var REPO     = 'servicenow-issue-automation';
-    var config   = JSON.parse(configJson)[REPO];
+    var config = JSON.parse(configJson)[inputs.account_name];
     if (!config) {
-      gs.error('No config entry for repo "' + REPO + '" in github.dispatch.config');
+      gs.error('No config entry for account "' + inputs.account_name + '" in github.dispatch.config');
       outputs.http_status = 'config_missing';
       outputs.success     = 'false';
       return;
     }
-    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches';
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
 
     var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch_cr');
     rm.setEndpoint(endpoint);
@@ -311,6 +315,7 @@ whether the trigger was a state change or a date update. Previous state is not t
 | `cr_assigned_to` | String | Trigger > Change Request Record > **Assigned to** > **Name** |
 | `cr_planned_start` | String | Trigger > Change Request Record > **Planned start date** |
 | `cr_planned_end` | String | Trigger > Change Request Record > **Planned end date** |
+| `account_name` | String | Look Up Record > Customer Service Case Record > **Account** > **Name** |
 
 #### Script
 
@@ -324,6 +329,7 @@ whether the trigger was a state change or a date update. Previous state is not t
   var assignedTo   = inputs.cr_assigned_to + '';
   var plannedStart = inputs.cr_planned_start + '';
   var plannedEnd   = inputs.cr_planned_end + '';
+  var accountName  = inputs.account_name + '';
 
   // Read current state directly from the live record.
   // The data pill captures the before value; GlideRecord gives the current (post-save) value.
@@ -346,6 +352,7 @@ whether the trigger was a state change or a date update. Previous state is not t
   outputs.planned_start  = plannedStart;
   outputs.planned_end    = plannedEnd;
   outputs.action         = action;
+  outputs.account_name   = accountName;
   outputs.should_send    = (issueNumber.length > 0 && crNumber.length > 0) ? 'true' : 'false';
 
 })(inputs, outputs);
@@ -364,6 +371,7 @@ whether the trigger was a state change or a date update. Previous state is not t
 | `planned_start` | String |
 | `planned_end` | String |
 | `action` | String |
+| `account_name` | String |
 | `should_send` | String |
 
 Click **Done**.
@@ -399,6 +407,7 @@ Click **+** inside the **then** branch. Select **Script**.
 | `planned_start` | String | Script Step 1 > `planned_start` |
 | `planned_end` | String | Script Step 1 > `planned_end` |
 | `action` | String | Script Step 1 > `action` |
+| `account_name` | String | Script Step 1 > `account_name` |
 
 #### Script
 
@@ -414,15 +423,14 @@ Click **+** inside the **then** branch. Select **Script**.
       return;
     }
 
-    var REPO     = 'servicenow-issue-automation';
-    var config   = JSON.parse(configJson)[REPO];
+    var config = JSON.parse(configJson)[inputs.account_name];
     if (!config) {
-      gs.error('No config entry for repo "' + REPO + '" in github.dispatch.config');
+      gs.error('No config entry for account "' + inputs.account_name + '" in github.dispatch.config');
       outputs.http_status = 'config_missing';
       outputs.success     = 'false';
       return;
     }
-    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches';
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
 
     var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch_cr');
     rm.setEndpoint(endpoint);

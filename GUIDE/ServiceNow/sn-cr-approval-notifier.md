@@ -101,6 +101,7 @@ Click **+** below Look Up Record. Select **Script**.
 | `case_sys_id` | String | Look Up Record > Customer Service Case Record > **Sys ID** |
 | `cr_number` | String | Trigger > Change Request Record > **Number** |
 | `cr_sys_id` | String | Trigger > Change Request Record > **Sys ID** |
+| `account_name` | String | Look Up Record > Customer Service Case Record > **Account** > **Name** |
 
 #### Script
 
@@ -111,6 +112,7 @@ Click **+** below Look Up Record. Select **Script**.
   var caseId      = inputs.case_sys_id + '';
   var crNumber    = inputs.cr_number + '';
   var crSysId     = inputs.cr_sys_id + '';
+  var accountName = inputs.account_name + '';
 
   var approvalType = '';
   var authorizedBy = '';
@@ -154,6 +156,7 @@ Click **+** below Look Up Record. Select **Script**.
   outputs.approval_type  = approvalType;
   outputs.authorized_by  = authorizedBy;
   outputs.cab_approvers  = cabApprovers;
+  outputs.account_name   = accountName;
   outputs.should_send    = (issueNumber.length > 0 && crNumber.length > 0 && approvalType.length > 0) ? 'true' : 'false';
 
 })(inputs, outputs);
@@ -171,6 +174,7 @@ Click **+** below Look Up Record. Select **Script**.
 | `approval_type` | String |
 | `authorized_by` | String |
 | `cab_approvers` | String |
+| `account_name` | String |
 | `should_send` | String |
 
 Click **Done**.
@@ -205,6 +209,7 @@ Click **+** inside the **then** branch. Select **Script**.
 | `approval_type` | String | Script Step 1 > `approval_type` |
 | `authorized_by` | String | Script Step 1 > `authorized_by` |
 | `cab_approvers` | String | Script Step 1 > `cab_approvers` |
+| `account_name` | String | Script Step 1 > `account_name` |
 
 #### Script
 
@@ -220,15 +225,14 @@ Click **+** inside the **then** branch. Select **Script**.
       return;
     }
 
-    var REPO     = 'servicenow-issue-automation';
-    var config   = JSON.parse(configJson)[REPO];
+    var config = JSON.parse(configJson)[inputs.account_name];
     if (!config) {
-      gs.error('No config entry for repo "' + REPO + '" in github.dispatch.config');
+      gs.error('No config entry for account "' + inputs.account_name + '" in github.dispatch.config');
       outputs.http_status = 'config_missing';
       outputs.success     = 'false';
       return;
     }
-    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches';
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
 
     var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch_cr');
     rm.setEndpoint(endpoint);

@@ -91,6 +91,7 @@ Click **+** below the trigger. Select **Script**.
 | `case_sys_id` | String | Trigger > Customer Service Case Record > **Sys ID** |
 | `case_resolution` | String | Trigger > Customer Service Case Record > **Resolution notes** |
 | `assigned_to_name` | String | Trigger > Customer Service Case Record > **Assigned to** > **Name** |
+| `account_name` | String | Trigger > Customer Service Case Record > **Account** > **Name** |
 
 > If your instance does not have a **Resolution notes** field, omit `case_resolution` from the input variables and remove the `outputs.resolution_notes` line in the script below.
 
@@ -104,6 +105,7 @@ Click **+** below the trigger. Select **Script**.
   var caseSysId   = inputs.case_sys_id + '';
   var resolution  = inputs.case_resolution + '';
   var assignedTo  = inputs.assigned_to_name + '';
+  var accountName = inputs.account_name + '';
 
   // Read the current state display value directly from the record
   // to avoid hardcoding integer state codes across different instances.
@@ -138,6 +140,7 @@ Click **+** below the trigger. Select **Script**.
   outputs.assigned_to      = assignedTo;
   outputs.sn_user          = gs.getUserDisplayName();
   outputs.action           = action;
+  outputs.account_name     = accountName;
   outputs.should_send      = (issueNumber.length > 0 && action.length > 0) ? 'true' : 'false';
 
 })(inputs, outputs);
@@ -154,6 +157,7 @@ Click **+** below the trigger. Select **Script**.
 | `assigned_to` | String |
 | `sn_user` | String |
 | `action` | String |
+| `account_name` | String |
 | `should_send` | String |
 
 Click **Done**.
@@ -192,6 +196,7 @@ Click **+** inside the **then** branch. Select **Script**.
 | `assigned_to` | String | Script step 1 > `assigned_to` |
 | `sn_user` | String | Script step 1 > `sn_user` |
 | `action` | String | Script step 1 > `action` |
+| `account_name` | String | Script step 1 > `account_name` |
 
 #### Script
 
@@ -207,15 +212,14 @@ Click **+** inside the **then** branch. Select **Script**.
       return;
     }
 
-    var REPO     = 'servicenow-issue-automation';
-    var config   = JSON.parse(configJson)[REPO];
+    var config = JSON.parse(configJson)[inputs.account_name];
     if (!config) {
-      gs.error('No config entry for repo "' + REPO + '" in github.dispatch.config');
+      gs.error('No config entry for account "' + inputs.account_name + '" in github.dispatch.config');
       outputs.http_status = 'config_missing';
       outputs.success     = 'false';
       return;
     }
-    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches';
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
 
     var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch');
     rm.setEndpoint(endpoint);

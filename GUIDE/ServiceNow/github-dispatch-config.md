@@ -3,8 +3,9 @@
 `github.dispatch.config` is the single ServiceNow System Property that holds all GitHub
 connection details used by every flow in this integration.
 
-It is a JSON object **keyed by repo name**. Each key maps to the credentials for that repo.
-All flows read it at runtime — nothing is hardcoded in the REST Message record itself.
+It is a JSON object **keyed by the exact Account display name** from the Customer Service Case.
+Each key maps to the GitHub repo that team's cases should dispatch to. The script in each flow
+reads the Account field from the case and uses it as the lookup key — no hardcoding anywhere.
 
 ---
 
@@ -12,83 +13,69 @@ All flows read it at runtime — nothing is hardcoded in the REST Message record
 
 ```json
 {
-  "<repo-name>": {
+  "<Account display name>": {
     "token": "github_pat_...",
-    "owner": "<org-or-user>"
+    "owner": "<org-or-user>",
+    "repo":  "<repository-name>"
   }
 }
 ```
 
 | Field | Description |
 |---|---|
-| `<repo-name>` | Exact GitHub repo name — used as both the lookup key and in the dispatch URL |
+| `<Account display name>` | Exact value of the **Account** field on the case — copy it character-for-character |
 | `token` | GitHub Personal Access Token (classic) with `repo` scope |
 | `owner` | GitHub org name or username that owns the repo |
-
-The `repo` field is **not** stored inside the entry. The key itself is the repo name and is
-inserted directly into the endpoint URL:
-`https://api.github.com/repos/{owner}/{key}/dispatches`
+| `repo` | GitHub repository name |
 
 ---
 
-## Current value (single team)
+## Example — two teams
 
 ```json
 {
-  "servicenow-issue-automation": {
+  "Customer Portal Customer Account1": {
     "token": "github_pat_11A4TTP6I0pVPVtRXHzPEg_...",
-    "owner": "thev1ndu"
-  }
-}
-```
-
----
-
-## Multi-team example
-
-If a second team uses a different repo on the same ServiceNow instance, add a second key:
-
-```json
-{
-  "servicenow-issue-automation": {
-    "token": "github_pat_...",
-    "owner": "thev1ndu"
+    "owner": "thev1ndu",
+    "repo":  "servicenow-issue-automation"
   },
-  "platform-ops-issues": {
+  "Asgardeo Customer Account": {
     "token": "github_pat_...",
-    "owner": "another-org"
+    "owner": "wso2",
+    "repo":  "asgardeo-issues"
   }
 }
 ```
 
-Each team's flows use a different `REPO` constant — see [How flows use this](#how-flows-use-this).
+A case with **Account = "Customer Portal Customer Account1"** dispatches to `servicenow-issue-automation`.
+A case with **Account = "Asgardeo Customer Account"** dispatches to `asgardeo-issues`.
+Both can run concurrently — each case carries its own routing key.
 
 ---
 
 ## How flows use this
 
-Every Script Step 2 in every flow has one constant at the top:
+Every Script Step 1 reads the Account field and passes it as `account_name`:
 
 ```javascript
-var REPO = 'servicenow-issue-automation';
+var accountName = inputs.account_name + '';   // data pill: Account > Name
+outputs.account_name = accountName;
 ```
 
-The rest of the lookup is identical across all flows:
+Every Script Step 2 uses it as the lookup key:
 
 ```javascript
-var configJson = gs.getProperty('github.dispatch.config');
-var REPO     = 'servicenow-issue-automation';
-var config   = JSON.parse(configJson)[REPO];
+var config = JSON.parse(configJson)[inputs.account_name];
 if (!config) {
-  gs.error('No config entry for repo "' + REPO + '" in github.dispatch.config');
+  gs.error('No config entry for account "' + inputs.account_name + '" in github.dispatch.config');
   outputs.http_status = 'config_missing';
   outputs.success     = 'false';
   return;
 }
-var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches';
+var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
 ```
 
-To point a flow at a different repo, change only the `REPO` constant on line 1.
+No constant, no hardcoding — the account name on the case drives everything.
 
 ---
 
@@ -97,32 +84,43 @@ To point a flow at a different repo, change only the `REPO` constant on line 1.
 1. Go to: `All > System Properties > System Properties`
 2. Search for `github.dispatch.config`
 3. Click the record
-4. Edit the **Value** field — the full JSON object
+4. Edit the **Value** field — paste the full JSON object
 5. Check **Ignore cache** so the updated value takes effect immediately
 6. Click **Update**
 
 > **Tip:** Use a JSON formatter before pasting to catch syntax errors.
-> A malformed value will cause all flows to log `config_missing` and stop sending.
+> A malformed value causes all flows to log `config_missing` and stop sending.
 
 ---
 
-## How to add a new team / repo
+## How to add a new account / team
 
 1. Open `github.dispatch.config` as above
-2. Add a new key to the JSON object:
+2. Add a new key — copy the account display name exactly from ServiceNow:
 
 ```json
 {
-  "servicenow-issue-automation": { ... },
-  "new-team-repo": {
+  "Customer Portal Customer Account1": { ... },
+  "New Team Account Name": {
     "token": "github_pat_...",
-    "owner": "new-org"
+    "owner": "new-org",
+    "repo":  "new-repo"
   }
 }
 ```
 
-3. In the new team's Flow Designer flows, set `var REPO = 'new-team-repo';` in each Script Step 2
-4. The same REST Message (`GitHub Integration`) is shared — no new REST Message needed
+3. No flow changes needed — the account name on the case automatically routes to the new entry
+
+---
+
+## Finding the exact account display name
+
+The key must match the Account field value character-for-character (case-sensitive, spaces included).
+
+To find it:
+1. Open a case that belongs to the team
+2. Right-click the **Account** field label → **Show value** (or hover to see the raw value)
+3. Copy that string exactly as the JSON key
 
 ---
 
@@ -130,8 +128,9 @@ To point a flow at a different repo, change only the `REPO` constant on line 1.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `config_missing` in flow logs | Property does not exist or JSON is invalid | Verify the property exists and value is valid JSON |
-| `No config entry for repo "..."` in flow logs | `REPO` constant does not match any key in the JSON | Check the key name matches exactly (case-sensitive) |
-| `http_status: 401` | Token is expired or missing `repo` scope | Regenerate the PAT and update `token` in the property |
-| `http_status: 404` | `owner` is wrong or repo does not exist | Check `owner` and the key name against the GitHub URL |
+| `config_missing` in flow logs | Property missing or JSON is invalid | Verify the property exists and value parses as valid JSON |
+| `No config entry for account "..."` | Account name on the case does not match any key | Copy the account name exactly — check spaces, capitalisation, special characters |
+| `http_status: 401` | Token expired or missing `repo` scope | Regenerate the PAT and update `token` in the property |
+| `http_status: 404` | `owner` or `repo` is wrong | Check against the GitHub URL: `github.com/{owner}/{repo}` |
 | Changes not taking effect | Property is cached | Enable **Ignore cache** on the property record |
+| Account field is empty on some cases | Case was created without selecting an account | Ensure agents always set the Account field when creating cases |

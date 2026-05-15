@@ -83,6 +83,7 @@ For each variable:
 | `github_issue_number` | String | Trigger > Customer Service Case Record > **u_github_issue_number** |
 | `case_number` | String | Trigger > Customer Service Case Record > **Number** |
 | `case_sys_id` | String | Trigger > Customer Service Case Record > **Sys ID** |
+| `account_name` | String | Trigger > Customer Service Case Record > **Account** > **Name** |
 
 > Do NOT map `Additional comments` as a data pill — journal fields return a Java object
 > reference (e.g. `com.glide.glideobject.Journal@6e3f83c9`) instead of the actual text.
@@ -98,18 +99,20 @@ In the **Script** area, paste:
   var issueNumber = inputs.github_issue_number + '';
   var caseNumber  = inputs.case_number + '';
   var caseSysId   = inputs.case_sys_id + '';
+  var accountName = inputs.account_name + '';
 
   // Journal fields must be read via GlideRecord — data pills return a Java object reference
   var gr = new GlideRecord('sn_customerservice_case');
   gr.get(caseSysId);
   var commentText = gr.comments.getJournalEntry(1) + '';
 
-  outputs.issue_number = issueNumber;
-  outputs.note_text    = commentText;
-  outputs.note_type    = 'additional_comments';
-  outputs.case_number  = caseNumber;
-  outputs.case_sys_id  = caseSysId;
-  outputs.sn_user      = gs.getUserDisplayName();
+  outputs.issue_number  = issueNumber;
+  outputs.note_text     = commentText;
+  outputs.note_type     = 'additional_comments';
+  outputs.case_number   = caseNumber;
+  outputs.case_sys_id   = caseSysId;
+  outputs.sn_user       = gs.getUserDisplayName();
+  outputs.account_name  = accountName;
 
   // Only send if the case has a GitHub issue linked AND a comment was actually posted
   outputs.should_send = (issueNumber.length > 0 && commentText.length > 0) ? 'true' : 'false';
@@ -132,6 +135,7 @@ In the **Output Variables** section below the script editor, click **+ Create Va
 | `case_number` | String |
 | `case_sys_id` | String |
 | `sn_user` | String |
+| `account_name` | String |
 | `should_send` | String |
 
 Click **Done** to close the Script step panel.
@@ -174,6 +178,7 @@ Map each from the previous Script step's outputs:
 | `case_number` | String | Script step 1 > `case_number` |
 | `case_sys_id` | String | Script step 1 > `case_sys_id` |
 | `sn_user` | String | Script step 1 > `sn_user` |
+| `account_name` | String | Script step 1 > `account_name` |
 
 #### Script
 
@@ -190,15 +195,14 @@ Map each from the previous Script step's outputs:
       return;
     }
 
-    var REPO     = 'servicenow-issue-automation';
-    var config   = JSON.parse(configJson)[REPO];
+    var config = JSON.parse(configJson)[inputs.account_name];
     if (!config) {
-      gs.error('No config entry for repo "' + REPO + '" in github.dispatch.config');
+      gs.error('No config entry for account "' + inputs.account_name + '" in github.dispatch.config');
       outputs.http_status = 'config_missing';
       outputs.success     = 'false';
       return;
     }
-    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches';
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
 
     // 'GitHub Integration' = REST Message name, 'dispatch' = HTTP Method name
     var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch');

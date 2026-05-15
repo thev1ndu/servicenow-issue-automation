@@ -10,27 +10,28 @@ Both flows call this same REST Message with different HTTP Methods.
 
 ## How the system property is used
 
-The property `github.dispatch.config` holds a JSON object keyed by repo name:
+The property `github.dispatch.config` holds a JSON object keyed by **account display name**
+(the exact value from the **Account** field on the Customer Service Case):
 
 ```json
 {
-  "servicenow-issue-automation": {
+  "Customer Portal Customer Account1": {
     "token": "github_pat_...",
-    "owner": "your-org"
+    "owner": "your-org",
+    "repo":  "your-repo"
   }
 }
 ```
 
-The Script step in each flow declares a `REPO` constant matching the key, looks up the entry, and:
-- Builds the endpoint URL: `https://api.github.com/repos/{owner}/{REPO}/dispatches`
+The Script step in each flow reads `inputs.account_name` (passed from the case's Account field),
+uses it as the lookup key, and:
+- Builds the endpoint URL: `https://api.github.com/repos/{owner}/{repo}/dispatches`
 - Sets the `Authorization: token {token}` header
-
-The repo name is the key — it is not stored inside the entry but used directly when building the endpoint URL.
 
 Because of this, the REST Message itself needs **no auth** and **no variable substitutions**.
 The script handles all of that at runtime.
 
-See [github-dispatch-config.md](github-dispatch-config.md) for the full format and multi-repo setup.
+See [github-dispatch-config.md](github-dispatch-config.md) for the full format and multi-account setup.
 
 ---
 
@@ -149,13 +150,14 @@ Go to: `All > System Properties > System Properties`
 
 Search for `github.dispatch.config`.
 
-The property value should be valid JSON keyed by repo name:
+The property value should be valid JSON keyed by account display name:
 
 ```json
 {
-  "servicenow-issue-automation": {
+  "Customer Portal Customer Account1": {
     "token": "github_pat_...",
-    "owner": "thev1ndu"
+    "owner": "thev1ndu",
+    "repo":  "servicenow-issue-automation"
   }
 }
 ```
@@ -178,16 +180,16 @@ Go to: `All > System Definition > Scripts - Background`
 Paste and run:
 
 ```javascript
-var configJson = gs.getProperty('github.dispatch.config');
-var REPO   = 'servicenow-issue-automation';
-var config = JSON.parse(configJson)[REPO];
+var configJson   = gs.getProperty('github.dispatch.config');
+var accountName  = 'Customer Portal Customer Account1'; // replace with actual account name
+var config       = JSON.parse(configJson)[accountName];
 
 gs.info('Owner: ' + config.owner);
-gs.info('Repo:  ' + REPO);
+gs.info('Repo:  ' + config.repo);
 gs.info('Token starts with: ' + config.token.substring(0, 10));
 
 var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch');
-rm.setEndpoint('https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches');
+rm.setEndpoint('https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches');
 rm.setRequestHeader('Authorization', 'token ' + config.token);
 rm.setRequestBody(JSON.stringify({
   event_type: 'servicenow-note',
