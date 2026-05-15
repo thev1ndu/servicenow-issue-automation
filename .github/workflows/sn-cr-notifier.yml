@@ -43,7 +43,9 @@ jobs:
             const crState = resolveState(p.cr_state);
             const caseSysId = p.case_sys_id || '';
             const action = p.action;
-            const assignedTo = (p.assigned_to && p.assigned_to !== 'null') ? p.assigned_to : '';
+            const assignedTo    = (p.assigned_to    && p.assigned_to    !== 'null') ? p.assigned_to    : '';
+            const authorizedBy  = (p.authorized_by  && p.authorized_by  !== 'null') ? p.authorized_by  : '';
+            const cabApprovers  = (p.cab_approvers   && p.cab_approvers  !== 'null') ? p.cab_approvers  : '';
             const servicenowUiUrl = process.env.SERVICENOW_UI_URL;
             const crUrl = crSysId ? `${servicenowUiUrl}/now/nav/ui/classic/params/target/change_request.do?sys_id=${crSysId}` : `#`;
             const toIST = d => new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
@@ -63,7 +65,7 @@ jobs:
               core.warning('Missing github_issue_number, cr_number, or action — skipping');
               return;
             }
-            if (action !== 'created' && action !== 'state_changed' && action !== 'dates_updated') {
+            if (action !== 'created' && action !== 'state_changed' && action !== 'dates_updated' && action !== 'approval_updated') {
               core.warning('Unknown action: ' + action);
               return;
             }
@@ -105,5 +107,15 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
                 body: `💬 **ServiceNow Change Request — Schedule Updated [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **State:** **${crState}**${assignedBlock}\n\n⏰ **Change Window:** ${plannedStart || '—'} → ${plannedEnd || '—'}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
+              });
+            } else if (action === 'approval_updated') {
+              const isAuthorize   = crState === 'Authorize';
+              const approvalLabel = isAuthorize ? 'Authorized' : 'CAB Approved';
+              const approvalBlock = isAuthorize
+                ? (authorizedBy ? `\n> **Authorized by:** ${authorizedBy}` : '')
+                : (cabApprovers  ? `\n> **CAB Approved by:** ${cabApprovers}` : '');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: parseInt(issueNumber, 10),
+                body: `💬 **ServiceNow Change Request — ${approvalLabel} [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **State:** **${crState}**${approvalBlock}\n${metaLine}\n---\n*Automatically notified by ServiceNow*`
               });
             }
