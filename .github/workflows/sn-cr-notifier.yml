@@ -114,10 +114,10 @@ jobs:
               let body;
               if (approvalType === 'authorized' || authorizedBy) {
                 const who = authorizedBy || '—';
-                body = `🔐 **ServiceNow Change Request — Authorized [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **State:** Authorize\n> **Authorized by:** ${who}\n\n---\n*Automatically notified by ServiceNow*`;
+                body = `🔐 **ServiceNow Change Request — Authorized [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **Authorized by:** ${who}\n\n---\n*Automatically notified by ServiceNow*`;
               } else if (approvalType === 'cab_approved' || cabApprovers) {
                 const who = cabApprovers || '—';
-                body = `✅ **ServiceNow Change Request — CAB Approved [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **State:** Scheduled (CAB Approved)\n> **CAB Approved by:** ${who}\n\n---\n*Automatically notified by ServiceNow*`;
+                body = `✅ **ServiceNow Change Request — CAB Approved [#${crNumber}](${crUrl})** [${timestamp}]\n\n> **CAB Approved by:** ${who}\n\n---\n*Automatically notified by ServiceNow*`;
               } else {
                 core.warning('approval_updated: neither authorized_by nor cab_approvers provided — skipping');
                 return;

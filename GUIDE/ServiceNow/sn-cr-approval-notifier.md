@@ -285,7 +285,6 @@ Click **Save**, then **Activate**.
 ```
 🔐 ServiceNow Change Request — Authorized #CHG0012345 [2026-05-15 14:32:00 IST]
 
-> State: Authorize
 > Authorized by: John Smith
 
 ---
@@ -297,7 +296,6 @@ Click **Save**, then **Activate**.
 ```
 ✅ ServiceNow Change Request — CAB Approved #CHG0012345 [2026-05-15 15:10:00 IST]
 
-> State: Scheduled (CAB Approved)
 > CAB Approved by: Jane Doe, Bob Lee
 
 ---
