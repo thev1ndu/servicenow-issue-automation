@@ -207,8 +207,15 @@ Click **+** inside the **then** branch. Select **Script**.
       return;
     }
 
-    var config   = JSON.parse(configJson);
-    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
+    var REPO     = 'servicenow-issue-automation';
+    var config   = JSON.parse(configJson)[REPO];
+    if (!config) {
+      gs.error('No config entry for repo "' + REPO + '" in github.dispatch.config');
+      outputs.http_status = 'config_missing';
+      outputs.success     = 'false';
+      return;
+    }
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches';
 
     var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch');
     rm.setEndpoint(endpoint);
@@ -315,10 +322,11 @@ Go to: `All > System Definition > Scripts - Background`
 
 ```javascript
 var configJson = gs.getProperty('github.dispatch.config');
-var config = JSON.parse(configJson);
+var REPO   = 'servicenow-issue-automation';
+var config = JSON.parse(configJson)[REPO];
 
 var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch');
-rm.setEndpoint('https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches');
+rm.setEndpoint('https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches');
 rm.setRequestHeader('Authorization', 'token ' + config.token);
 rm.setRequestBody(JSON.stringify({
   event_type: 'servicenow-case-update',
@@ -342,10 +350,11 @@ Expected: `HTTP Status: 204`. A `👤 ServiceNow Case Assigned` comment should a
 
 ```javascript
 var configJson = gs.getProperty('github.dispatch.config');
-var config = JSON.parse(configJson);
+var REPO   = 'servicenow-issue-automation';
+var config = JSON.parse(configJson)[REPO];
 
 var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch');
-rm.setEndpoint('https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches');
+rm.setEndpoint('https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches');
 rm.setRequestHeader('Authorization', 'token ' + config.token);
 rm.setRequestBody(JSON.stringify({
   event_type: 'servicenow-case-update',

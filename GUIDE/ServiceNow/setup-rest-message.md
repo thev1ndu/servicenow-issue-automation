@@ -10,22 +10,27 @@ Both flows call this same REST Message with different HTTP Methods.
 
 ## How the system property is used
 
-The property `github.dispatch.config` holds:
+The property `github.dispatch.config` holds a JSON object keyed by repo name:
 
 ```json
 {
-  "token": "github_pat_...",
-  "owner": "your-org",
-  "repo":  "your-repo"
+  "servicenow-issue-automation": {
+    "token": "github_pat_...",
+    "owner": "your-org"
+  }
 }
 ```
 
-The Script step in each flow reads this property, parses the JSON, and:
-- Builds the endpoint URL: `https://api.github.com/repos/{owner}/{repo}/dispatches`
+The Script step in each flow declares a `REPO` constant matching the key, looks up the entry, and:
+- Builds the endpoint URL: `https://api.github.com/repos/{owner}/{REPO}/dispatches`
 - Sets the `Authorization: token {token}` header
+
+The repo name is the key — it is not stored inside the entry but used directly when building the endpoint URL.
 
 Because of this, the REST Message itself needs **no auth** and **no variable substitutions**.
 The script handles all of that at runtime.
+
+See [github-dispatch-config.md](github-dispatch-config.md) for the full format and multi-repo setup.
 
 ---
 
@@ -144,13 +149,14 @@ Go to: `All > System Properties > System Properties`
 
 Search for `github.dispatch.config`.
 
-The property value should be valid JSON like:
+The property value should be valid JSON keyed by repo name:
 
 ```json
 {
-  "token": "github_pat_...",
-  "owner": "thev1ndu",
-  "repo":  "servicenow-issue-automation"
+  "servicenow-issue-automation": {
+    "token": "github_pat_...",
+    "owner": "thev1ndu"
+  }
 }
 ```
 
@@ -173,14 +179,15 @@ Paste and run:
 
 ```javascript
 var configJson = gs.getProperty('github.dispatch.config');
-var config = JSON.parse(configJson);
+var REPO   = 'servicenow-issue-automation';
+var config = JSON.parse(configJson)[REPO];
 
 gs.info('Owner: ' + config.owner);
-gs.info('Repo:  ' + config.repo);
+gs.info('Repo:  ' + REPO);
 gs.info('Token starts with: ' + config.token.substring(0, 10));
 
 var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch');
-rm.setEndpoint('https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches');
+rm.setEndpoint('https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches');
 rm.setRequestHeader('Authorization', 'token ' + config.token);
 rm.setRequestBody(JSON.stringify({
   event_type: 'servicenow-note',

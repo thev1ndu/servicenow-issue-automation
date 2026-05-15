@@ -220,8 +220,15 @@ Click **+** inside the **then** branch. Select **Script**.
       return;
     }
 
-    var config   = JSON.parse(configJson);
-    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
+    var REPO     = 'servicenow-issue-automation';
+    var config   = JSON.parse(configJson)[REPO];
+    if (!config) {
+      gs.error('No config entry for repo "' + REPO + '" in github.dispatch.config');
+      outputs.http_status = 'config_missing';
+      outputs.success     = 'false';
+      return;
+    }
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches';
 
     var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch_cr');
     rm.setEndpoint(endpoint);

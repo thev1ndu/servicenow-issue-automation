@@ -190,8 +190,15 @@ Map each from the previous Script step's outputs:
       return;
     }
 
-    var config   = JSON.parse(configJson);
-    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + config.repo + '/dispatches';
+    var REPO     = 'servicenow-issue-automation';
+    var config   = JSON.parse(configJson)[REPO];
+    if (!config) {
+      gs.error('No config entry for repo "' + REPO + '" in github.dispatch.config');
+      outputs.http_status = 'config_missing';
+      outputs.success     = 'false';
+      return;
+    }
+    var endpoint = 'https://api.github.com/repos/' + config.owner + '/' + REPO + '/dispatches';
 
     // 'GitHub Integration' = REST Message name, 'dispatch' = HTTP Method name
     var rm = new sn_ws.RESTMessageV2('GitHub Integration', 'dispatch');
@@ -232,7 +239,7 @@ Map each from the previous Script step's outputs:
 })(inputs, outputs);
 ```
 
-> `gs.getProperty('github.dispatch.config')` reads the system property and parses the JSON.
+> `gs.getProperty('github.dispatch.config')` reads the keyed config and selects the entry for `REPO`.
 > `rm.setEndpoint()` overrides the placeholder URL on the REST Message with the real owner/repo URL.
 > `rm.setRequestHeader('Authorization', ...)` injects the PAT token as a bearer token header.
 > `rm.setRequestBody()` sets the JSON body directly — no `${placeholder}` substitutions needed.
