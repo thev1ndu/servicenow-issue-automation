@@ -46,67 +46,73 @@ Click **New**.
 
 ---
 
+### Why `sys_label_entry`, not the Case table
+
+When tags are added or removed in ServiceNow, **the Case record itself is not updated** — only
+the `sys_label_entry` junction table is written to. A BR on `sn_customerservice_case` never fires
+for tag changes, and `current.sys_tags.changes()` never triggers. The BR must sit on
+`sys_label_entry` and fire on Insert (tag added) and Delete (tag removed).
+
+---
+
 ### Basic fields
 
 | Field | Value |
 |---|---|
 | **Name** | `SN Case Tags → GitHub Labels` |
-| **Table** | `Customer Service Case [sn_customerservice_case]` |
+| **Table** | `Label Entry [sys_label_entry]` |
 | **Active** | ✅ checked |
 | **Advanced** | ✅ checked |
 | **When** | `after` |
-| **Update** | ✅ checked |
-| **Insert** | leave unchecked |
+| **Insert** | ✅ checked |
+| **Update** | leave unchecked |
+| **Delete** | ✅ checked |
 
 ---
 
 ### Condition
 
-In the **Condition** field (the single-line expression box near the top):
-
 ```javascript
-current.sys_tags.changes() && current.u_github_issue_number != ''
+current.table == 'sn_customerservice_case'
 ```
 
-This fires only when the tags field actually changed AND the case has a GitHub issue linked.
+Filters to entries that belong to Case records only — ignores tag changes on all other tables.
 
 ---
 
 ### Script
 
-Paste into the **Script** area:
-
 ```javascript
 (function executeRule(current, previous /*null when async*/) {
 
-  var issueNumber = current.getValue('u_github_issue_number');
+  // Only handle entries linked to the Case table
+  if (current.getValue('table') != 'sn_customerservice_case') return;
+
+  var caseSysId = current.getValue('id');
+
+  // Look up the case to get issue number and account
+  var caseGr = new GlideRecord('sn_customerservice_case');
+  if (!caseGr.get(caseSysId)) return;
+
+  var issueNumber = caseGr.getValue('u_github_issue_number');
   if (!issueNumber) return;
 
-  var accountName = current.account.getDisplayValue();
-  if (!accountName) {
-    gs.warn('SN Tags → GitHub: no account on case ' + current.number);
-    return;
-  }
+  var accountName = caseGr.account.getDisplayValue();
+  if (!accountName) return;
 
   var configJson = gs.getProperty('github.dispatch.config');
-  if (!configJson) {
-    gs.error('SN Tags → GitHub: github.dispatch.config missing');
-    return;
-  }
+  if (!configJson) { gs.error('SN Tags → GitHub: github.dispatch.config missing'); return; }
 
   var config = JSON.parse(configJson)[accountName];
-  if (!config) {
-    gs.error('SN Tags → GitHub: no config entry for account "' + accountName + '"');
-    return;
-  }
+  if (!config) { gs.error('SN Tags → GitHub: no config entry for account "' + accountName + '"'); return; }
 
-  var baseUrl = 'https://api.github.com/repos/' + config.owner + '/' + config.repo;
+  var baseUrl    = 'https://api.github.com/repos/' + config.owner + '/' + config.repo;
   var authHeader = 'token ' + config.token;
 
-  // Read all Change-Tracking/* tags currently saved on this case
+  // Read all Change-Tracking/* tags currently on this case
   var tagGr = new GlideRecord('sys_label_entry');
   tagGr.addQuery('table', 'sn_customerservice_case');
-  tagGr.addQuery('id', current.sys_id);
+  tagGr.addQuery('id', caseSysId);
   tagGr.query();
 
   var changeTrackingLabels = [];
@@ -117,7 +123,7 @@ Paste into the **Script** area:
     }
   }
 
-  // GET current GitHub issue labels
+  // GET current GitHub labels — keep everything that is NOT Change-Tracking/*
   var getRm = new sn_ws.RESTMessageV2();
   getRm.setHttpMethod('GET');
   getRm.setEndpoint(baseUrl + '/issues/' + issueNumber + '/labels');
@@ -125,38 +131,30 @@ Paste into the **Script** area:
   getRm.setRequestHeader('Accept', 'application/vnd.github+json');
 
   var getResp = getRm.execute();
-  var keepLabels = [];
-
-  if (getResp.getStatusCode() == 200) {
-    var existing = JSON.parse(getResp.getBody());
-    for (var i = 0; i < existing.length; i++) {
-      // Keep every label that is NOT a Change-Tracking/* label
-      if (existing[i].name.indexOf('Change-Tracking/') !== 0) {
-        keepLabels.push(existing[i].name);
-      }
-    }
-  } else {
-    gs.warn('SN Tags → GitHub: GET labels returned HTTP ' + getResp.getStatusCode());
-    return;
+  if (getResp.getStatusCode() != 200) {
+    gs.warn('SN Tags → GitHub: GET labels HTTP ' + getResp.getStatusCode()); return;
   }
 
-  // Merge: kept labels + current Change-Tracking tags from SN
-  var newLabels = keepLabels.concat(changeTrackingLabels);
+  var keepLabels = [];
+  var existing = JSON.parse(getResp.getBody());
+  for (var i = 0; i < existing.length; i++) {
+    if (existing[i].name.indexOf('Change-Tracking/') !== 0) {
+      keepLabels.push(existing[i].name);
+    }
+  }
 
-  // PUT merged label list to GitHub
+  // PUT merged list back
   var putRm = new sn_ws.RESTMessageV2();
   putRm.setHttpMethod('PUT');
   putRm.setEndpoint(baseUrl + '/issues/' + issueNumber + '/labels');
   putRm.setRequestHeader('Authorization', authHeader);
   putRm.setRequestHeader('Accept', 'application/vnd.github+json');
   putRm.setRequestHeader('Content-Type', 'application/json');
-  putRm.setRequestBody(JSON.stringify({ labels: newLabels }));
+  putRm.setRequestBody(JSON.stringify({ labels: keepLabels.concat(changeTrackingLabels) }));
 
   var putResp = putRm.execute();
-  var httpStatus = putResp.getStatusCode();
-
-  if (httpStatus !== 200) {
-    gs.warn('SN Tags → GitHub: PUT labels failed. HTTP ' + httpStatus + ' Body: ' + putResp.getBody());
+  if (putResp.getStatusCode() != 200) {
+    gs.warn('SN Tags → GitHub: PUT labels HTTP ' + putResp.getStatusCode() + ' ' + putResp.getBody());
   }
 
 })(current, previous);
